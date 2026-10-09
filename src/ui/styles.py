@@ -100,6 +100,16 @@ class ModernStyles:
         color: #4ADE80;
     }
 
+    QLabel#BadgeDanger {
+        background-color: #3F1414;
+        border: 1px solid #7F1D1D;
+        border-radius: 6px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #FCA5A5;
+    }
+
     QLabel#BadgeWarning {
         background-color: #3B2012;
         border: 1px solid #7C3D12;
@@ -261,4 +271,38 @@ class ModernStyles:
         background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4F46E5, stop:1 #10B981);
         border-radius: 7px;
     }
+
+    /* Grouping boxes used by the settings dialog */
+    QGroupBox {
+        color: #A5B4FC;
+        font-weight: bold;
+        border: 1px solid #2A2D42;
+        border-radius: 8px;
+        margin-top: 12px;
+        padding: 12px 10px 10px 10px;
+    }
+
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        left: 10px;
+        padding: 0 4px;
+    }
     """
+
+
+def apply_object_name(widget, name: str) -> None:
+    """
+    Switches a widget to another styled objectName and repaints it.
+
+    Qt only re-reads the stylesheet for a widget when its style is unpolished
+    and polished again; calling setStyle(style()) happened to work sometimes
+    but is not the documented way to refresh a selector change.
+    """
+    if widget.objectName() == name:
+        return
+    widget.setObjectName(name)
+    style = widget.style()
+    style.unpolish(widget)
+    style.polish(widget)
+    widget.update()

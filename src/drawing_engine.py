@@ -1,9 +1,25 @@
 import time
 from typing import List, Tuple
-from PySide6.QtCore import QThread, Signal, QMutex, QWaitCondition
 
-from src.mouse_controller import MouseController
-from src.time_estimator import TimeEstimator
+from PySide6.QtCore import QMutex, QThread, QWaitCondition, Signal
+
+from src.logger import get_logger
+from src.mouse_controller import MouseController, TimerResolution, precise_sleep
+from src.time_estimator import (
+    PEN_SETTLE_AFTER_PRESS,
+    PEN_SETTLE_AFTER_RELEASE,
+    PEN_SETTLE_BEFORE_PRESS,
+    TimeEstimator,
+    drag_delay_for_speed,
+)
+
+log = get_logger("engine")
+
+Stroke = List[Tuple[int, int]]
+
+# Progress is emitted at most this often; a drawing can contain hundreds of
+# thousands of points and one signal per point would swamp the UI thread.
+PROGRESS_INTERVAL_SEC = 0.05
 
 
 class DrawingEngineWorker(QThread):
@@ -21,15 +37,15 @@ class DrawingEngineWorker(QThread):
 
     def __init__(
         self,
-        strokes: List[List[Tuple[int, int]]],
+        strokes: List[Stroke],
         start_x: int,
         start_y: int,
         speed: int = 50,
         estimated_total_seconds: float = 0.0,
-        parent=None
+        parent=None,
     ):
         super().__init__(parent)
-        self.strokes = strokes
+        self.strokes = [s for s in strokes if len(s) >= 2]
         self.start_x = start_x
         self.start_y = start_y
         self.speed = max(1, min(100, speed))
@@ -38,11 +54,14 @@ class DrawingEngineWorker(QThread):
         self.mouse = MouseController()
         self._is_paused = False
         self._is_stopped = False
-        
+
         self._mutex = QMutex()
         self._pause_condition = QWaitCondition()
 
-        self.drag_delay = 0.0025 - (self.speed / 100.0) * 0.0024
+        self.drag_delay = drag_delay_for_speed(self.speed)
+        self.total_points = sum(len(s) for s in self.strokes)
+
+    # ---------------- control ----------------
 
     def pause(self) -> None:
         """Pauses drawing execution."""
@@ -70,87 +89,98 @@ class DrawingEngineWorker(QThread):
         self._mutex.unlock()
         self.mouse.safe_reset()
 
+    def _should_abort(self) -> bool:
+        """True when the user asked to stop, via the UI or the ESC key."""
+        self._mutex.lock()
+        stopped = self._is_stopped
+        self._mutex.unlock()
+        return stopped or MouseController.check_esc_pressed()
+
+    def _wait_while_paused(self) -> bool:
+        """Blocks while paused; returns True if the worker should abort."""
+        self._mutex.lock()
+        while self._is_paused and not self._is_stopped:
+            self._pause_condition.wait(self._mutex)
+        stopped = self._is_stopped
+        self._mutex.unlock()
+        return stopped
+
+    # ---------------- execution ----------------
+
     def run(self) -> None:
         total_strokes = len(self.strokes)
-        total_points = sum(len(s) for s in self.strokes)
-
         if total_strokes == 0:
             self.drawing_finished.emit(0.0, 0, 0)
             return
 
+        log.info("Drawing %d strokes / %d points at speed %d", total_strokes, self.total_points, self.speed)
         self.mouse.start_esc_listener(on_esc_callback=self.stop)
         start_time = time.time()
+        points_done = 0
+        last_emit = 0.0
 
         try:
-            for i, stroke in enumerate(self.strokes):
-                if self._is_stopped or MouseController.check_esc_pressed():
-                    self.mouse.safe_reset()
-                    self.drawing_cancelled.emit("Interrompido pelo usuário (ESC)")
-                    return
+            # A 1ms system timer makes the short per-point delays achievable.
+            with TimerResolution():
+                for index, stroke in enumerate(self.strokes):
+                    if self._wait_while_paused() or self._should_abort():
+                        return self._cancel("Interrompido pelo usuário (ESC)")
 
-                self._mutex.lock()
-                while self._is_paused and not self._is_stopped:
-                    self._pause_condition.wait(self._mutex)
-                is_stopped = self._is_stopped
-                self._mutex.unlock()
+                    # 1. Move to the stroke start with the button up.
+                    self.mouse.move_to(self.start_x + stroke[0][0], self.start_y + stroke[0][1])
+                    precise_sleep(PEN_SETTLE_BEFORE_PRESS)
 
-                if is_stopped or MouseController.check_esc_pressed():
-                    self.mouse.safe_reset()
-                    self.drawing_cancelled.emit("Interrompido pelo usuário")
-                    return
+                    # 2. Press the left button.
+                    self.mouse.press_left_button()
+                    precise_sleep(PEN_SETTLE_AFTER_PRESS)
+                    points_done += 1
 
-                if len(stroke) < 2:
-                    continue
+                    # 3. Drag along the densified stroke.
+                    for point in stroke[1:]:
+                        if self._should_abort():
+                            return self._cancel("Interrompido pelo usuário (ESC)")
 
-                # 1. Move to starting position of stroke (mouse button UP)
-                first_pt = stroke[0]
-                target_x = self.start_x + first_pt[0]
-                target_y = self.start_y + first_pt[1]
-                
-                self.mouse.move_to(target_x, target_y)
-                time.sleep(0.004)
+                        self.mouse.move_to(self.start_x + point[0], self.start_y + point[1])
+                        precise_sleep(self.drag_delay)
+                        points_done += 1
 
-                # 2. Press left mouse button
-                self.mouse.press_left_button()
-                time.sleep(0.002)
+                        now = time.time()
+                        if now - last_emit >= PROGRESS_INTERVAL_SEC:
+                            last_emit = now
+                            self._emit_progress(index, total_strokes, points_done, now - start_time)
 
-                # 3. Drag mouse along interpolated dense stroke points
-                for pt in stroke[1:]:
-                    if self._is_stopped or MouseController.check_esc_pressed():
-                        self.mouse.safe_reset()
-                        self.drawing_cancelled.emit("Interrompido pelo usuário (ESC)")
-                        return
+                    # 4. Release at the end of the stroke.
+                    self.mouse.release_left_button()
+                    precise_sleep(PEN_SETTLE_AFTER_RELEASE)
 
-                    target_x = self.start_x + pt[0]
-                    target_y = self.start_y + pt[1]
-                    self.mouse.move_to(target_x, target_y)
-                    
-                    if self.drag_delay > 0:
-                        time.sleep(self.drag_delay)
-
-                # 4. Release left mouse button at end of stroke
-                self.mouse.release_left_button()
-                time.sleep(0.002)
-
-                # Calculate progress metrics
-                elapsed_sec = time.time() - start_time
-                pct = int(((i + 1) / total_strokes) * 100)
-                
-                # Estimate remaining time based on actual speed per stroke
-                stroke_rate = (i + 1) / float(elapsed_sec) if elapsed_sec > 0 else 0
-                if stroke_rate > 0:
-                    remaining_sec = (total_strokes - (i + 1)) / stroke_rate
-                else:
-                    remaining_sec = max(0.0, self.estimated_total_seconds - elapsed_sec)
-
-                self.progress_changed.emit(i + 1, total_strokes, pct, elapsed_sec, remaining_sec)
+                    now = time.time()
+                    if now - last_emit >= PROGRESS_INTERVAL_SEC or index == total_strokes - 1:
+                        last_emit = now
+                        self._emit_progress(index, total_strokes, points_done, now - start_time)
 
             actual_elapsed = time.time() - start_time
-            self.drawing_finished.emit(actual_elapsed, total_strokes, total_points)
+            log.info("Drawing finished in %.1fs", actual_elapsed)
+            self.drawing_finished.emit(actual_elapsed, total_strokes, self.total_points)
 
         except Exception as e:
+            log.exception("Drawing failed")
             self.mouse.safe_reset()
-            self.drawing_error.emit(f"Erro durante o desenho: {str(e)}")
+            self.drawing_error.emit(f"Erro durante o desenho: {e}")
 
         finally:
             self.mouse.safe_reset()
+
+    def _emit_progress(self, index: int, total_strokes: int, points_done: int, elapsed: float) -> None:
+        percent = int(min(100, points_done * 100 / self.total_points)) if self.total_points else 0
+        remaining = TimeEstimator.remaining_seconds(
+            points_done=points_done,
+            points_total=self.total_points,
+            elapsed_seconds=elapsed,
+            fallback_total=self.estimated_total_seconds,
+        )
+        self.progress_changed.emit(index + 1, total_strokes, percent, elapsed, remaining)
+
+    def _cancel(self, reason: str) -> None:
+        log.info("Drawing cancelled: %s", reason)
+        self.mouse.safe_reset()
+        self.drawing_cancelled.emit(reason)

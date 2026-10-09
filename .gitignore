@@ -6,13 +6,27 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
-.pytest_cache/
 
-# PyInstaller build cache and output executable (exceeds GitHub 100MB file limit)
+# Packaging metadata (created by `pip install -e .`)
+*.egg-info/
+.eggs/
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ty_cache/
+
+# PyInstaller build cache and output executable.
+# dist/AutoDraw.exe is ~106 MB, over GitHub's 100 MB per-file hard limit;
+# publish it as a GitHub Release asset instead of committing it.
 build/
 dist/
 *.manifest
+# AutoDraw.spec is generated from the flags in build_exe.py, so committing it
+# would create a second source of truth that drifts.
 *.spec
 
 # OS / IDE
@@ -21,3 +35,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# AutoDraw local data (when AUTODRAW_HOME points into the repo)
+.autodraw/

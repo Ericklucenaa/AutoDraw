@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autodraw"
+dynamic = ["version"]
+description = "Reproduces any image with the mouse in Paint, Krita, Photoshop or other drawing tools"
+requires-python = ">=3.9"
+dependencies = [
+    "PySide6>=6.5",
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+    "pillow>=10.0",
+    "pynput>=1.7",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "src.__version__" }
+
+[tool.setuptools]
+packages = ["src", "src.ui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error::DeprecationWarning:src.*"]
+
+# Imports are written as `src.module`, so the import root is the project root,
+# not the src/ directory (which is a package, not a source layout).
+[tool.ty.src]
+root = "."
+
+[tool.pyright]
+extraPaths = ["."]

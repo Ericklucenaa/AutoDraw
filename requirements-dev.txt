@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Development and packaging
+pytest>=7.4
+pyflakes>=3.1
+pyinstaller>=6.0
