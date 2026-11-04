@@ -1,7 +1,9 @@
 import time
 
-from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QFont
+from typing import Iterable, Optional, Tuple
+
+from PySide6.QtCore import QRect, Qt, Signal, Slot
+from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout
 )
@@ -27,6 +29,61 @@ def play_finish_sound() -> None:
         winsound.MessageBeep(winsound.MB_ICONASTERISK)
     except (RuntimeError, OSError):
         log.debug("Could not play completion sound", exc_info=True)
+
+
+HINT_DRAWING = "⚡ ESC cancela · mexer ou clicar com o mouse pausa o desenho"
+# Gap kept between the dialog and the drawing area, in physical pixels.
+CORNER_MARGIN = 16
+
+
+def _overlap(rect: Tuple[int, int, int, int], area: Tuple[int, int, int, int], margin: int = 0) -> int:
+    """Overlapping area, in px², of two (x, y, w, h) rectangles; area grown by margin."""
+    ax, ay, aw, ah = area[0] - margin, area[1] - margin, area[2] + 2 * margin, area[3] + 2 * margin
+    x, y, w, h = rect
+    dx = min(x + w, ax + aw) - max(x, ax)
+    dy = min(y + h, ay + ah) - max(y, ay)
+    return dx * dy if dx > 0 and dy > 0 else 0
+
+
+def _to_physical(screen_geo: QRect, ratio: float, logical: QRect) -> Tuple[int, int, int, int]:
+    """
+    Qt keeps each screen's top-left at its native position and divides only
+    the size by the scale factor; map a logical rect on that screen back.
+    """
+    ox, oy = screen_geo.x(), screen_geo.y()
+    return (
+        int(ox + (logical.x() - ox) * ratio),
+        int(oy + (logical.y() - oy) * ratio),
+        int(logical.width() * ratio),
+        int(logical.height() * ratio),
+    )
+
+
+def _corner_candidates(
+    width: int, height: int, area: Tuple[int, int, int, int], screens: Optional[Iterable] = None
+):
+    """
+    Yields (logical QRect, physical rect) for the four corners of every
+    screen's work area, the screen holding the drawing area first.
+    """
+    screens = list(screens if screens is not None else QGuiApplication.screens())
+    cx, cy = area[0] + area[2] // 2, area[1] + area[3] // 2
+
+    def holds_area(screen) -> bool:
+        x, y, w, h = _to_physical(screen.geometry(), screen.devicePixelRatio(), screen.geometry())
+        return x <= cx < x + w and y <= cy < y + h
+
+    screens.sort(key=lambda s: not holds_area(s))
+    pad = 12
+    for screen in screens:
+        work = screen.availableGeometry()
+        ratio = screen.devicePixelRatio()
+        xs = (work.right() - width - pad, work.left() + pad)
+        ys = (work.bottom() - height - pad, work.top() + pad)
+        for y in ys:
+            for x in xs:
+                logical = QRect(x, y, width, height)
+                yield logical, _to_physical(screen.geometry(), ratio, logical)
 
 
 class DrawingProgressDialog(QDialog):
@@ -60,6 +117,7 @@ class DrawingProgressDialog(QDialog):
         self.estimated_total_sec = estimated_total_sec
         self.sound_on_finish = sound_on_finish
         self.is_paused = False
+        self._click_through = False
         self.start_time = time.time()
 
         self._init_ui()
@@ -127,10 +185,11 @@ class DrawingProgressDialog(QDialog):
 
         layout.addLayout(btn_layout)
 
-        lbl_hint = QLabel("⚡ Pressione ESC a qualquer momento para cancelar", self)
-        lbl_hint.setObjectName("BadgeWarning")
-        lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(lbl_hint)
+        self.lbl_hint = QLabel(HINT_DRAWING, self)
+        self.lbl_hint.setObjectName("BadgeWarning")
+        self.lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_hint.setWordWrap(True)
+        layout.addWidget(self.lbl_hint)
 
     @Slot(int, int, int, float, float)
     def update_progress(
@@ -145,19 +204,72 @@ class DrawingProgressDialog(QDialog):
         )
 
     def _toggle_pause(self):
-        self.is_paused = not self.is_paused
-        if self.is_paused:
+        paused = not self.is_paused
+        self.set_paused(paused)
+        if paused:
+            self.pause_requested.emit()
+        else:
+            self.resume_requested.emit()
+
+    @Slot()
+    def show_paused(self, reason: str = "") -> None:
+        """Shows the paused state when the pause came from elsewhere (the mouse guard)."""
+        self.set_paused(True, reason)
+
+    def set_paused(self, paused: bool, reason: str = "") -> None:
+        """Updates the controls without emitting anything."""
+        self.is_paused = paused
+        if paused:
             self.lbl_title.setText("⏸️ Desenho Pausado")
             self.lbl_title.setStyleSheet("color: #FBBF24;")
             self.btn_pause.setText("▶️ CONTINUAR")
             self.btn_pause.setStyleSheet("background-color: #059669; color: white;")
-            self.pause_requested.emit()
+            self.lbl_hint.setText(
+                (f"Pausado: {reason}. " if reason else "")
+                + "Clique em CONTINUAR e solte o mouse: o desenho volta do mesmo ponto."
+            )
         else:
             self.lbl_title.setText("🎨 Desenhando...")
             self.lbl_title.setStyleSheet("color: #6366F1;")
             self.btn_pause.setText("⏸️ PAUSAR")
             self.btn_pause.setStyleSheet("")
-            self.resume_requested.emit()
+            self.lbl_hint.setText(HINT_DRAWING)
+        if self._click_through:
+            # Over the canvas the dialog lets the drawing clicks through, but
+            # while paused its buttons must be clickable.
+            self._set_click_through(not paused)
+
+    # ---------------- placement ----------------
+
+    def place_outside(self, area: Tuple[int, int, int, int]) -> bool:
+        """
+        Moves the dialog to a screen corner that does not cover the drawing
+        area (physical pixels). Returns False when no corner is free: the
+        dialog then sits in the least covering corner and lets clicks pass
+        through it to the canvas, so the drawing still lands where it should.
+        """
+        corners = list(_corner_candidates(self.width(), self.height(), area))
+        if not corners:
+            return True
+        best, best_overlap = None, None
+        for logical, physical in corners:
+            overlap = _overlap(physical, area, margin=CORNER_MARGIN)
+            if overlap == 0:
+                self.move(logical.topLeft())
+                return True
+            if best_overlap is None or overlap < best_overlap:
+                best, best_overlap = logical, overlap
+        self.move(best.topLeft())
+        self._click_through = True
+        self._set_click_through(True)
+        return False
+
+    def _set_click_through(self, on: bool) -> None:
+        visible = self.isVisible()
+        self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, on)
+        self.setWindowOpacity(0.82 if on else 1.0)
+        if visible:
+            self.show()
 
     def _request_stop(self):
         self.stop_requested.emit()

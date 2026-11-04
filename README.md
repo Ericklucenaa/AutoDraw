@@ -4,6 +4,10 @@ O **AutoDraw** é um aplicativo desktop para Windows (10/11) que reproduz imagen
 
 Mantendo a filosofia do projeto: **extremamente simples para o usuário, com qualidade de desenho e fidelidade totalmente configuráveis!**
 
+**⬇️ Download:** baixe o `AutoDraw.exe` na [página de releases](https://github.com/Ericklucenaa/AutoDraw/releases/latest). Não precisa instalar nem ter Python.
+
+**☕ Gostou?** O AutoDraw é grátis e de código aberto. Se ele te ajudou, [apoie o projeto no Ko-fi](https://ko-fi.com/ericklucena).
+
 ---
 
 ## ✨ Recursos
@@ -28,6 +32,9 @@ Mantendo a filosofia do projeto: **extremamente simples para o usuário, com qua
 9. **Tela de Conclusão & `🔄 REPETIR DESENHO`**: redesenha na mesma área, sempre passando pela contagem regressiva.
 10. **Processamento Assíncrono**: toda a vetorização roda em `QThread` com cancelamento cooperativo, mantendo a interface fluida.
 11. **Suporte a múltiplos monitores e telas com escala (DPI)**: a área é capturada em pixels físicos reais.
+12. **Tela livre durante o desenho**: a janela principal é minimizada e a janela de progresso vai para um canto da tela fora da área de desenho (se não houver canto livre, ela deixa os cliques passarem para a tela de desenho).
+13. **Trava de segurança do mouse**: se você mexer ou clicar com o mouse durante o desenho, ele pausa na hora e solta o clique. O AutoDraw distingue o seu mouse dos movimentos que ele mesmo envia.
+14. **Pausar sem falhas**: ao pausar no meio de um traço, o pincel é levantado na hora; ao continuar, ele volta exatamente do ponto onde parou.
 
 ---
 
@@ -44,6 +51,7 @@ Mantendo a filosofia do projeto: **extremamente simples para o usuário, com qua
 7. **Clique em `▶ DESENHAR`**:
    - Após a contagem de 3 segundos, o AutoDraw assumirá o controle do mouse.
    - **Pressione ESC a qualquer momento para cancelar imediatamente**.
+   - **Mexeu no mouse? O desenho pausa.** Clique em `▶️ CONTINUAR`, solte o mouse e ele continua do mesmo ponto.
 
 ---
 
@@ -54,7 +62,8 @@ Mantendo a filosofia do projeto: **extremamente simples para o usuário, com qua
 - **Vetorização**: detecção Canny seguida de *tracing* direto das polilinhas (cada pixel de borda é visitado uma única vez) e simplificação Ramer-Douglas-Peucker
 - **Otimização de Trajetórias**: vizinho mais próximo sobre grid espacial, com inversão dinâmica de traços
 - **Densificação**: reamostragem vetorizada com NumPy, preservando os vértices originais
-- **Automação do Mouse**: Win32 `SendInput` (coordenadas normalizadas no desktop virtual) + listener global de ESC (`pynput`)
+- **Automação do Mouse**: Win32 `SendInput`, um evento por ponto, com coordenadas normalizadas no desktop virtual de forma exata (cada pixel cai no lugar certo) + listener global de ESC (`pynput`)
+- **Trava de segurança**: Raw Input do Windows (eventos do `SendInput` chegam sem dispositivo, os do mouse de verdade chegam com o dispositivo), lido na thread da interface, sem gancho no caminho do mouse
 - **Compilação**: PyInstaller Standalone `.exe`
 
 ---
@@ -98,7 +107,7 @@ python main.py
 ```bash
 pip install -r requirements-dev.txt
 
-pytest tests        # 210 testes
+pytest tests        # 238 testes
 pyflakes main.py build_exe.py src tests
 ```
 
@@ -126,6 +135,7 @@ src/
   path_optimizer.py         Ordenação dos traços por grid espacial
   time_estimator.py         Estimativa, tempo restante e calibração
   mouse_controller.py       Win32 SendInput, DPI, ESC de emergência
+  input_guard.py            Trava de segurança: detecta o mouse de verdade (Raw Input)
   drawing_engine.py         QThread que executa o desenho
   async_processor.py        QThread de processamento com cancelamento
   ui/                       Janela principal, diálogos, overlay e widgets
@@ -142,3 +152,19 @@ Ficam em `%USERPROFILE%\.autodraw\`:
 - `autodraw.log` — log rotativo da aplicação, útil para diagnosticar o `.exe` compilado
 
 Defina a variável de ambiente `AUTODRAW_HOME` para usar outro diretório.
+
+---
+
+## ☕ Apoie o projeto
+
+O AutoDraw é mantido no tempo livre e é gratuito. Se ele foi útil para você, considere fazer uma doação:
+
+[![Apoiar no Ko-fi](https://img.shields.io/badge/Ko--fi-Apoiar%20o%20projeto-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/ericklucena)
+
+Também dá para apoiar pelo próprio app: botão **☕** no topo da janela ou o cartão **Apoie o AutoDraw** no final.
+
+---
+
+## 📄 Licença
+
+[MIT](LICENSE)

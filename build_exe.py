@@ -46,6 +46,10 @@ def build(one_dir: bool = False) -> int:
     icon_path = os.path.join(PROJECT_DIR, "assets", "autodraw.ico")
     if os.path.exists(icon_path):
         cmd.append(f"--icon={icon_path}")
+    window_icon = os.path.join(PROJECT_DIR, "assets", "autodraw.png")
+    if os.path.exists(window_icon):
+        # Bundled so main.py can set the window and taskbar icon at runtime.
+        cmd.append(f"--add-data={window_icon}{os.pathsep}assets")
 
     cmd.append(os.path.join(PROJECT_DIR, "main.py"))
 

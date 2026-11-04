@@ -1,17 +1,19 @@
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QFont
+from PySide6.QtCore import Qt, QTimer, QUrl, Slot
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
     QLabel, QMainWindow, QMessageBox, QPushButton, QRadioButton, QScrollArea,
     QSlider, QVBoxLayout, QWidget
 )
 
+from src import DONATE_URL
 from src.async_processor import ImageProcessorWorker
 from src.config import ConfigManager
 from src.drawing_engine import DrawingEngineWorker
 from src.image_loader import SUPPORTED_LABEL, ImageInfo, ImageLoader
+from src.input_guard import RealMouseGuard
 from src.logger import get_logger
 from src.time_estimator import TimeEstimator
 from src.ui.confirmation_dialog import ConfirmationDialog, CountdownOverlayDialog
@@ -34,6 +36,10 @@ MODE_ORDER = ("contour", "bw")
 RECALC_DEBOUNCE_MS = 250
 SETTINGS_SAVE_DEBOUNCE_MS = 800
 COUNTDOWN_SECONDS = 3
+# Square emoji buttons in the header: the global button padding squeezed the glyph.
+HEADER_ICON_STYLE = "QPushButton { padding: 0px; font-size: 17px; }"
+# Time for the main window's minimise animation before the mouse starts moving.
+MINIMIZE_SETTLE_MS = 400
 
 
 class MainWindow(QMainWindow):
@@ -57,6 +63,7 @@ class MainWindow(QMainWindow):
 
         self.processor_worker: Optional[ImageProcessorWorker] = None
         self.drawing_worker: Optional[DrawingEngineWorker] = None
+        self.mouse_guard: Optional[RealMouseGuard] = None
         self.progress_dialog: Optional[DrawingProgressDialog] = None
         self.overlay: Optional[AreaSelectionOverlay] = None
 
@@ -103,6 +110,7 @@ class MainWindow(QMainWindow):
             self._build_area_card(),
             self._build_action_card(),
             self._build_footer_badge(),
+            self._build_donate_card(),
         ):
             scroll_layout.addWidget(card)
 
@@ -125,8 +133,16 @@ class MainWindow(QMainWindow):
         layout.addLayout(titles)
         layout.addStretch()
 
+        btn_donate = QPushButton("☕", self)
+        btn_donate.setFixedSize(38, 38)
+        btn_donate.setStyleSheet(HEADER_ICON_STYLE)
+        btn_donate.setToolTip("Apoiar o projeto (Ko-fi)")
+        btn_donate.clicked.connect(self._open_donate)
+        layout.addWidget(btn_donate)
+
         btn_settings = QPushButton("⚙️", self)
         btn_settings.setFixedSize(38, 38)
+        btn_settings.setStyleSheet(HEADER_ICON_STYLE)
         btn_settings.setToolTip("Configurações")
         btn_settings.clicked.connect(self._open_settings)
         layout.addWidget(btn_settings)
@@ -316,8 +332,35 @@ class MainWindow(QMainWindow):
 
         return card
 
+    def _build_donate_card(self) -> QFrame:
+        card = QFrame(self)
+        card.setObjectName("Card")
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+
+        texts = QVBoxLayout()
+        lbl_title = QLabel("☕ Apoie o AutoDraw", self)
+        lbl_title.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        lbl_text = QLabel("O AutoDraw é grátis e de código aberto. Se ele te ajudou, considere fazer uma doação.", self)
+        lbl_text.setObjectName("HeaderSubtitle")
+        lbl_text.setWordWrap(True)
+        texts.addWidget(lbl_title)
+        texts.addWidget(lbl_text)
+        layout.addLayout(texts, 1)
+
+        btn = QPushButton("💜 APOIAR NO KO-FI", self)
+        btn.setFixedHeight(38)
+        btn.setToolTip(DONATE_URL)
+        btn.clicked.connect(self._open_donate)
+        layout.addWidget(btn)
+        return card
+
+    @staticmethod
+    def _open_donate() -> None:
+        QDesktopServices.openUrl(QUrl(DONATE_URL))
+
     def _build_footer_badge(self) -> QLabel:
-        badge = QLabel("⚡ Pressione ESC a qualquer momento para cancelar o desenho", self)
+        badge = QLabel("⚡ ESC cancela o desenho · mexer ou clicar com o mouse pausa", self)
         badge.setObjectName("BadgeWarning")
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return badge
@@ -729,12 +772,22 @@ class MainWindow(QMainWindow):
             parent=self,
         )
 
+        # No parent: a window owned by the main window would be hidden along
+        # with it when the main window is minimised below.
         dialog = DrawingProgressDialog(
             total_strokes=len(self.processed_strokes),
             estimated_total_sec=self.estimated_seconds,
             sound_on_finish=self.config_manager.get("sound_on_finish", True),
-            parent=self,
+            parent=None,
         )
+        area = self.selected_area
+        dialog.place_outside((area["x"], area["y"], area["w"], area["h"]))
+
+        # Moving or clicking the real mouse pauses the drawing (the pen is
+        # lifted at once); Continue picks it up from the same point.
+        guard = RealMouseGuard(on_touch=lambda reason, w=worker, d=dialog: self._on_real_mouse(w, d, reason))
+        worker.drawing_paused.connect(guard.suspend)
+        worker.drawing_resumed.connect(guard.resume)
 
         worker.progress_changed.connect(dialog.update_progress)
         worker.drawing_finished.connect(self._on_drawing_finished)
@@ -744,26 +797,55 @@ class MainWindow(QMainWindow):
         dialog.pause_requested.connect(worker.pause)
         dialog.resume_requested.connect(worker.resume)
         dialog.stop_requested.connect(worker.stop)
-        worker.finished.connect(lambda w=worker, d=dialog: self._release_drawing_worker(w, d))
+        worker.finished.connect(lambda w=worker, d=dialog, g=guard: self._release_drawing_worker(w, d, g))
 
         self.drawing_worker = worker
         self.progress_dialog = dialog
+        self.mouse_guard = guard
 
-        worker.start()
+        # Get the main window out of the way of the canvas, and give the
+        # minimise animation time to finish before the mouse starts moving.
+        self.showMinimized()
+        guard.start(int(dialog.winId()))
+        QTimer.singleShot(MINIMIZE_SETTLE_MS, lambda w=worker: w.isFinished() or w.isRunning() or w.start())
         if self.config_manager.get("show_progress", True):
             dialog.exec()
 
-    def _release_drawing_worker(self, worker: DrawingEngineWorker, dialog: DrawingProgressDialog) -> None:
+    def _on_real_mouse(self, worker: DrawingEngineWorker, dialog: DrawingProgressDialog, reason: str) -> None:
+        """The user touched the mouse mid-drawing: lift the pen and wait."""
+        if self.drawing_worker is not worker or not worker.isRunning():
+            return
+        worker.pause()
+        dialog.show_paused(reason)
+        if not dialog.isVisible():
+            # Progress window turned off in the settings: it is the only
+            # place with the Continue button, so show it now.
+            dialog.show()
+            dialog.raise_()
+
+    def _restore_after_drawing(self) -> None:
+        if self.isMinimized() or not self.isVisible():
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
+    def _release_drawing_worker(self, worker: DrawingEngineWorker, dialog: DrawingProgressDialog, guard=None) -> None:
         """Clears the worker and its dialog so repeats do not accumulate them."""
+        if guard is not None:
+            guard.stop()
+            if self.mouse_guard is guard:
+                self.mouse_guard = None
         if self.drawing_worker is worker:
             self.drawing_worker = None
         if self.progress_dialog is dialog:
             self.progress_dialog = None
+        self._restore_after_drawing()
         worker.deleteLater()
         dialog.deleteLater()
 
     @Slot(float, int, int)
     def _on_drawing_finished(self, actual_elapsed: float, total_strokes: int, total_pts: int):
+        self._restore_after_drawing()
         if self.progress_dialog is not None:
             self.progress_dialog.on_finished()
 
@@ -798,12 +880,14 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_drawing_cancelled(self, reason: str):
+        self._restore_after_drawing()
         if self.progress_dialog is not None:
             self.progress_dialog.reject()
         QMessageBox.warning(self, "Cancelado", f"O desenho foi cancelado: {reason}")
 
     @Slot(str)
     def _on_drawing_error(self, err_msg: str):
+        self._restore_after_drawing()
         if self.progress_dialog is not None:
             self.progress_dialog.reject()
         QMessageBox.critical(self, "Erro", f"Ocorreu um erro durante o desenho:\n{err_msg}")
@@ -829,6 +913,10 @@ class MainWindow(QMainWindow):
 
         self._recalc_timer.stop()
         self._cancel_processing()
+
+        if self.mouse_guard is not None:
+            self.mouse_guard.stop()
+            self.mouse_guard = None
 
         worker = self.drawing_worker
         self.drawing_worker = None

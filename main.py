@@ -11,6 +11,12 @@ from src.mouse_controller import enable_dpi_awareness
 log = get_logger("main")
 
 
+def resource_path(*parts: str) -> str:
+    """Path of a bundled file, from the source tree or the PyInstaller bundle."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
+
+
 def main():
     # Must run before Qt creates anything: with the process marked per-monitor
     # DPI aware, Win32 coordinates are real screen pixels, which is what the
@@ -28,6 +34,12 @@ def main():
     app.setApplicationName("AutoDraw")
     app.setOrganizationName("AutoDraw")
     app.setApplicationVersion(__version__)
+
+    icon_path = resource_path("assets", "autodraw.png")
+    if os.path.exists(icon_path):
+        from PySide6.QtGui import QIcon
+
+        app.setWindowIcon(QIcon(icon_path))
 
     log_path = setup_logging()
     log.info("Starting AutoDraw %s (log: %s)", __version__, log_path)

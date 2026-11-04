@@ -133,6 +133,7 @@ class MouseController:
 
     def __init__(self):
         self._is_pressed = False
+        self._screen: Optional[Tuple[int, int, int, int]] = None
         self._esc_listener = None
         self._esc_callback: Optional[Callable[[], None]] = None
 
@@ -211,28 +212,40 @@ class MouseController:
         if sent != 1:
             log.error("SendInput rejected (flags=0x%X, error=%s)", flags, ctypes.get_last_error())
 
-    @classmethod
-    def move_to(cls, x: int, y: int) -> None:
+    @staticmethod
+    def normalize(value: int, origin: int, size: int) -> int:
         """
-        Moves the cursor to an absolute physical screen position.
+        Converts a physical pixel to the 0..65535 absolute grid of SendInput.
 
-        The absolute coordinates are normalised over the *virtual* desktop:
-        normalising over SM_CXSCREEN (the primary monitor) sent the pointer to
-        the wrong place on any secondary monitor.
+        Windows maps an absolute coordinate back with floor(n * size / 65536),
+        so the ceiling of the inverse lands on the exact pixel (measured on a
+        4480x1440 virtual desktop: every reachable pixel). The previous
+        round(v * 65535 / size) was one pixel off almost everywhere, which is
+        why every move used to be followed by a corrective SetCursorPos.
+        """
+        return -((-(int(value) - origin) * 65536) // size)
+
+    def begin_session(self) -> None:
+        """Caches the virtual desktop rectangle for the duration of a drawing."""
+        self._screen = self.virtual_screen_rect()
+
+    def end_session(self) -> None:
+        self._screen = None
+
+    def move_to(self, x: int, y: int) -> None:
+        """
+        Moves the cursor to an absolute physical screen position with a single
+        SendInput event, normalised over the *virtual* desktop so secondary
+        monitors work. Apps reading raw input see a genuine move.
         """
         if not IS_WINDOWS:
             return
-        ix, iy = int(x), int(y)
-
-        # SendInput first so apps reading raw input see a genuine move event,
-        # then SetCursorPos, because normalising to the 0..65535 absolute grid
-        # rounds to within a pixel and SetCursorPos lands exactly.
-        left, top, width, height = cls.virtual_screen_rect()
-        norm_x = int(round((ix - left) * 65535 / width))
-        norm_y = int(round((iy - top) * 65535 / height))
-        cls._send(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, norm_x, norm_y)
-
-        user32.SetCursorPos(ix, iy)
+        left, top, width, height = self._screen or self.virtual_screen_rect()
+        self._send(
+            MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+            self.normalize(x, left, width),
+            self.normalize(y, top, height),
+        )
 
     def press_left_button(self) -> None:
         """Presses left mouse button."""

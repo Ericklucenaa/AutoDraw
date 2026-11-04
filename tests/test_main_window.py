@@ -389,3 +389,18 @@ def test_drop_of_a_supported_file_loads_it(window, image_path):
     window.dropEvent(event)
     assert window.current_image_info is not None
     assert window.current_image_info.filename == "drawing.png"
+
+
+# ---------------- donation ----------------
+
+def test_donate_buttons_open_the_ko_fi_page(window, monkeypatch):
+    from PySide6.QtWidgets import QPushButton
+    from src import DONATE_URL
+
+    opened = []
+    monkeypatch.setattr("src.ui.main_window.QDesktopServices.openUrl", lambda url: opened.append(url.toString()))
+    buttons = [b for b in window.findChildren(QPushButton) if "KO-FI" in b.text() or b.text() == "☕"]
+    assert len(buttons) == 2
+    for b in buttons:
+        b.click()
+    assert opened == [DONATE_URL, DONATE_URL]
