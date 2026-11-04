@@ -44,3 +44,40 @@ def sample_bgr():
     cv2.rectangle(canvas, (30, 30), (230, 170), (0, 0, 0), 2)
     cv2.line(canvas, (30, 170), (230, 30), (0, 0, 0), 2)
     return canvas
+
+
+# Imported here, after AUTODRAW_HOME is redirected above.
+import cv2  # noqa: E402
+from PySide6.QtWidgets import QMessageBox  # noqa: E402
+
+from src.config import ConfigManager  # noqa: E402
+from src.i18n import set_language  # noqa: E402
+from src.ui.main_window import MainWindow  # noqa: E402
+
+
+@pytest.fixture
+def window(qapp, tmp_path, monkeypatch):
+    """A main window whose config lives in a temp dir and which never shows modals."""
+    def make_config():
+        # Portuguese regardless of the machine's locale, so text assertions hold on CI.
+        cfg = ConfigManager(base_dir=tmp_path)
+        cfg.config.setdefault("language", "")
+        if not cfg.get("language"):
+            cfg.config["language"] = "pt"
+        return cfg
+
+    monkeypatch.setattr("src.ui.main_window.ConfigManager", make_config)
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+    monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: None))
+
+    win = MainWindow()
+    yield win
+    win.close()
+    set_language("pt")
+
+
+@pytest.fixture
+def image_path(tmp_path, sample_bgr):
+    path = tmp_path / "drawing.png"
+    cv2.imwrite(str(path), sample_bgr)
+    return str(path)

@@ -9,6 +9,7 @@ from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtSvg import QSvgRenderer
 
+from src.i18n import tr
 from src.logger import get_logger
 
 log = get_logger("loader")
@@ -54,20 +55,20 @@ class ImageLoader:
         it instead of silently doing nothing.
         """
         if not filepath:
-            raise ImageLoadError("Nenhum arquivo informado.")
+            raise ImageLoadError(tr("Nenhum arquivo informado."))
         if not os.path.exists(filepath):
-            raise ImageLoadError(f"Arquivo não encontrado:\n{filepath}")
+            raise ImageLoadError(tr("Arquivo não encontrado:\n{path}", path=filepath))
 
         ext = os.path.splitext(filepath)[1].lower()
         if ext not in SUPPORTED_EXTENSIONS:
             raise ImageLoadError(
-                f"Formato {ext or 'desconhecido'} não suportado.\n\nAceitos: {SUPPORTED_LABEL}"
+                tr("Formato {ext} não suportado.\n\nAceitos: {formats}", ext=ext or "?", formats=SUPPORTED_LABEL)
             )
 
         cv_img = ImageLoader._render_svg(filepath) if ext == ".svg" else ImageLoader._load_raster(filepath)
 
         if cv_img is None or cv_img.size == 0:
-            raise ImageLoadError(f"A imagem está vazia ou corrompida:\n{os.path.basename(filepath)}")
+            raise ImageLoadError(tr("A imagem está vazia ou corrompida:\n{name}", name=os.path.basename(filepath)))
 
         height, width = cv_img.shape[:2]
         log.info("Loaded %s (%dx%d)", os.path.basename(filepath), width, height)
@@ -96,7 +97,7 @@ class ImageLoader:
     def _render_svg(filepath: str) -> np.ndarray:
         renderer = QSvgRenderer(filepath)
         if not renderer.isValid():
-            raise ImageLoadError(f"SVG inválido ou não suportado:\n{os.path.basename(filepath)}")
+            raise ImageLoadError(tr("SVG inválido ou não suportado:\n{name}", name=os.path.basename(filepath)))
 
         default_size = renderer.defaultSize()
         natural_w = default_size.width()
@@ -143,11 +144,11 @@ class ImageLoader:
                 return cv2.cvtColor(np.asarray(rgb_img), cv2.COLOR_RGB2BGR)
         except (UnidentifiedImageError, ValueError) as e:
             raise ImageLoadError(
-                f"Não foi possível decodificar a imagem:\n{os.path.basename(filepath)}\n\n({e})"
+                tr("Não foi possível decodificar a imagem:\n{name}\n\n({error})", name=os.path.basename(filepath), error=e)
             ) from e
         except OSError as e:
             raise ImageLoadError(
-                f"Erro ao ler o arquivo:\n{os.path.basename(filepath)}\n\n({e})"
+                tr("Erro ao ler o arquivo:\n{name}\n\n({error})", name=os.path.basename(filepath), error=e)
             ) from e
 
 

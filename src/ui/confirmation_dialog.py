@@ -4,10 +4,11 @@ from PySide6.QtWidgets import (
     QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 )
 
+from src.i18n import tr
 from src.time_estimator import TimeEstimator
 from src.ui.styles import ModernStyles
 
-QUALITY_LABELS = {"baixa": "Baixa", "media": "Média", "alta": "Alta"}
+QUALITY_SOURCE = {"baixa": "Baixa", "media": "Média", "alta": "Alta"}
 
 
 class ConfirmationDialog(QDialog):
@@ -31,15 +32,15 @@ class ConfirmationDialog(QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Confirmar Desenho — AutoDraw")
+        self.setWindowTitle(tr("Confirmar desenho — AutoDraw"))
         self.setFixedWidth(460)
         self.setStyleSheet(ModernStyles.MAIN_STYLE)
 
         self.filename = filename
         self.img_w = img_w
         self.img_h = img_h
-        self.quality_level = QUALITY_LABELS.get(quality_level.lower(), quality_level.capitalize())
-        self.mode_label = "Preto e Branco" if mode == "bw" else "Contorno"
+        self.quality_level = tr(QUALITY_SOURCE.get(quality_level.lower(), quality_level.capitalize()))
+        self.mode_label = tr("Preto e Branco") if mode == "bw" else tr("Contorno")
         self.area_w = area_w
         self.area_h = area_h
         self.total_strokes = total_strokes
@@ -54,7 +55,7 @@ class ConfirmationDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
 
-        lbl_title = QLabel("🎨 Seu desenho está pronto!", self)
+        lbl_title = QLabel(tr("🎨 Seu desenho está pronto!"), self)
         lbl_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
         lbl_title.setStyleSheet("color: #6366F1;")
         layout.addWidget(lbl_title)
@@ -67,12 +68,12 @@ class ConfirmationDialog(QDialog):
 
         t_str = TimeEstimator.format_time(self.estimated_sec)
         for line in (
-            f"📄 <b>Imagem:</b> {self.filename}",
-            f"📏 <b>Resolução:</b> {self.img_w} × {self.img_h} px",
-            f"⭐ <b>Qualidade:</b> {self.quality_level} &nbsp;·&nbsp; <b>Modo:</b> {self.mode_label}",
-            f"📍 <b>Área Selecionada:</b> {self.area_w} × {self.area_h} px",
-            f"🖌️ <b>Traços:</b> {self.total_strokes:,} &nbsp;·&nbsp; <b>Pontos:</b> {self.total_points:,}",
-            f"⏱ <b>Tempo estimado:</b> ≈ {t_str}",
+            tr("📄 <b>Imagem:</b> {name}", name=self.filename),
+            tr("📏 <b>Resolução:</b> {w} × {h} px", w=self.img_w, h=self.img_h),
+            tr("⭐ <b>Qualidade:</b> {quality} &nbsp;·&nbsp; <b>Modo:</b> {mode}", quality=self.quality_level, mode=self.mode_label),
+            tr("📍 <b>Área selecionada:</b> {w} × {h} px", w=self.area_w, h=self.area_h),
+            tr("🖌️ <b>Traços:</b> {strokes:,} &nbsp;·&nbsp; <b>Pontos:</b> {points:,}", strokes=self.total_strokes, points=self.total_points),
+            tr("⏱ <b>Tempo estimado:</b> ≈ {time}", time=t_str),
         ):
             c_layout.addWidget(QLabel(line, self))
 
@@ -83,11 +84,13 @@ class ConfirmationDialog(QDialog):
         w_layout = QVBoxLayout(warn_card)
         w_layout.setContentsMargins(12, 10, 12, 10)
 
-        lbl_w1 = QLabel("⚠️ O AutoDraw assumirá o controle do mouse para desenhar.", self)
+        lbl_w1 = QLabel(tr("⚠️ O AutoDraw assumirá o controle do mouse para desenhar."), self)
+        lbl_w1.setWordWrap(True)
         lbl_w1.setStyleSheet("color: #FBBF24; font-weight: bold;")
-        lbl_w2 = QLabel("Certifique-se de que o programa de desenho esteja aberto na área selecionada.", self)
+        lbl_w2 = QLabel(tr("Certifique-se de que o programa de desenho esteja aberto na área selecionada."), self)
         lbl_w2.setWordWrap(True)
-        lbl_w3 = QLabel("⚡ Pressione ESC a qualquer momento para cancelar.", self)
+        lbl_w3 = QLabel(tr("⚡ ESC cancela · mexer no mouse pausa o desenho."), self)
+        lbl_w3.setWordWrap(True)
         lbl_w3.setStyleSheet("color: #EF4444; font-weight: bold;")
 
         w_layout.addWidget(lbl_w1)
@@ -95,18 +98,18 @@ class ConfirmationDialog(QDialog):
         w_layout.addWidget(lbl_w3)
         layout.addWidget(warn_card)
 
-        self.chk_skip = QCheckBox("Não mostrar esta confirmação novamente", self)
-        self.chk_skip.setToolTip("Você pode reativá-la depois em ⚙️ Configurações.")
+        self.chk_skip = QCheckBox(tr("Não mostrar esta confirmação novamente"), self)
+        self.chk_skip.setToolTip(tr("Você pode reativá-la depois em ⚙️ Configurações."))
         layout.addWidget(self.chk_skip)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        btn_cancel = QPushButton("CANCELAR", self)
+        btn_cancel = QPushButton(tr("CANCELAR"), self)
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancel)
 
-        btn_start = QPushButton("▶ COMEÇAR", self)
+        btn_start = QPushButton(tr("▶ COMEÇAR"), self)
         btn_start.setObjectName("PrimaryButton")
         btn_start.setDefault(True)
         btn_start.clicked.connect(self._on_start)
@@ -124,7 +127,7 @@ class CountdownOverlayDialog(QDialog):
 
     def __init__(self, countdown_sec: int = 3, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Prepare o programa de desenho...")
+        self.setWindowTitle(tr("Prepare o programa de desenho..."))
         self.setFixedSize(360, 240)
         self.setWindowFlags(
             Qt.WindowType.Dialog
@@ -146,7 +149,7 @@ class CountdownOverlayDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.lbl_head = QLabel("Prepare o programa de desenho...", self)
+        self.lbl_head = QLabel(tr("Prepare o programa de desenho..."), self)
         self.lbl_head.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self.lbl_head.setStyleSheet("color: #A5B4FC;")
         self.lbl_head.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -159,7 +162,7 @@ class CountdownOverlayDialog(QDialog):
         self.lbl_num.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.lbl_num)
 
-        lbl_sub = QLabel("O controle do mouse iniciará em breve\n[ ESC cancela ]", self)
+        lbl_sub = QLabel(tr("O controle do mouse iniciará em breve\n[ ESC cancela ]"), self)
         lbl_sub.setStyleSheet("color: #94A3B8; font-size: 12px;")
         lbl_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl_sub)
@@ -170,7 +173,7 @@ class CountdownOverlayDialog(QDialog):
             self.lbl_num.setText(str(self.count))
             return
         self.timer.stop()
-        self.lbl_num.setText("Começando!")
+        self.lbl_num.setText(tr("Começando!"))
         QTimer.singleShot(400, self.accept)
 
     def keyPressEvent(self, event):

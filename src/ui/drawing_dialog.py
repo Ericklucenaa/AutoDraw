@@ -8,11 +8,12 @@ from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout
 )
 
+from src.i18n import tr
 from src.logger import get_logger
 from src.time_estimator import TimeEstimator
 from src.ui.styles import ModernStyles
 
-QUALITY_LABELS = {"baixa": "Baixa", "media": "Média", "alta": "Alta"}
+QUALITY_SOURCE = {"baixa": "Baixa", "media": "Média", "alta": "Alta"}
 
 log = get_logger("ui.progress")
 
@@ -103,7 +104,7 @@ class DrawingProgressDialog(QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("AutoDraw — Desenhando...")
+        self.setWindowTitle(tr("AutoDraw — Desenhando..."))
         self.setFixedSize(460, 340)
         self.setWindowFlags(
             Qt.WindowType.Dialog
@@ -127,7 +128,7 @@ class DrawingProgressDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
 
-        self.lbl_title = QLabel("🎨 Desenhando...", self)
+        self.lbl_title = QLabel(tr("🎨 Desenhando..."), self)
         self.lbl_title.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         self.lbl_title.setStyleSheet("color: #6366F1;")
         layout.addWidget(self.lbl_title)
@@ -138,7 +139,7 @@ class DrawingProgressDialog(QDialog):
         p_layout.setContentsMargins(16, 16, 16, 16)
         p_layout.setSpacing(8)
 
-        self.lbl_percentage = QLabel("0% concluído", self)
+        self.lbl_percentage = QLabel(tr("{percent}% concluído", percent=0), self)
         self.lbl_percentage.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
         self.lbl_percentage.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_percentage.setStyleSheet("color: #4ADE80;")
@@ -151,17 +152,17 @@ class DrawingProgressDialog(QDialog):
         p_layout.addWidget(self.progress_bar)
 
         info_row = QHBoxLayout()
-        self.lbl_time_rem = QLabel("Tempo restante: --", self)
+        self.lbl_time_rem = QLabel(tr("Tempo restante: --"), self)
         self.lbl_time_rem.setStyleSheet("color: #CBD5E1; font-weight: 600; font-size: 12px;")
         info_row.addWidget(self.lbl_time_rem)
         info_row.addStretch()
-        self.lbl_stroke_count = QLabel(f"Traço: 0 / {self.total_strokes:,}", self)
+        self.lbl_stroke_count = QLabel(tr("Traço: {current:,} / {total:,}", current=0, total=self.total_strokes), self)
         self.lbl_stroke_count.setStyleSheet("color: #94A3B8; font-size: 12px;")
         info_row.addWidget(self.lbl_stroke_count)
         p_layout.addLayout(info_row)
 
         self.lbl_total_est = QLabel(
-            f"Tempo total estimado: {TimeEstimator.format_time(self.estimated_total_sec)}", self
+            tr("Tempo total estimado: {time}", time=TimeEstimator.format_time(self.estimated_total_sec)), self
         )
         self.lbl_total_est.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_total_est.setStyleSheet("color: #64748B; font-size: 11px;")
@@ -172,12 +173,12 @@ class DrawingProgressDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(12)
 
-        self.btn_pause = QPushButton("⏸️ PAUSAR", self)
+        self.btn_pause = QPushButton(tr("⏸️ PAUSAR"), self)
         self.btn_pause.setFixedHeight(40)
         self.btn_pause.clicked.connect(self._toggle_pause)
         btn_layout.addWidget(self.btn_pause)
 
-        self.btn_stop = QPushButton("🛑 PARAR", self)
+        self.btn_stop = QPushButton(tr("🛑 PARAR"), self)
         self.btn_stop.setObjectName("DangerButton")
         self.btn_stop.setFixedHeight(40)
         self.btn_stop.clicked.connect(self._request_stop)
@@ -185,7 +186,7 @@ class DrawingProgressDialog(QDialog):
 
         layout.addLayout(btn_layout)
 
-        self.lbl_hint = QLabel(HINT_DRAWING, self)
+        self.lbl_hint = QLabel(tr(HINT_DRAWING), self)
         self.lbl_hint.setObjectName("BadgeWarning")
         self.lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_hint.setWordWrap(True)
@@ -196,11 +197,11 @@ class DrawingProgressDialog(QDialog):
         self, current: int, total: int, percentage: int, elapsed_sec: float, remaining_sec: float
     ):
         self.progress_bar.setValue(percentage)
-        self.lbl_percentage.setText(f"{percentage}% concluído")
-        self.lbl_stroke_count.setText(f"Traço: {current:,} / {total:,}")
+        self.lbl_percentage.setText(tr("{percent}% concluído", percent=percentage))
+        self.lbl_stroke_count.setText(tr("Traço: {current:,} / {total:,}", current=current, total=total))
         self.lbl_time_rem.setText(
-            f"Restante: {TimeEstimator.format_time(remaining_sec)}"
-            f"  ·  Decorrido: {TimeEstimator.format_time(elapsed_sec)}"
+            tr("Restante: {remaining}  ·  Decorrido: {elapsed}",
+               remaining=TimeEstimator.format_time(remaining_sec), elapsed=TimeEstimator.format_time(elapsed_sec))
         )
 
     def _toggle_pause(self):
@@ -220,20 +221,20 @@ class DrawingProgressDialog(QDialog):
         """Updates the controls without emitting anything."""
         self.is_paused = paused
         if paused:
-            self.lbl_title.setText("⏸️ Desenho Pausado")
+            self.lbl_title.setText(tr("⏸️ Desenho pausado"))
             self.lbl_title.setStyleSheet("color: #FBBF24;")
-            self.btn_pause.setText("▶️ CONTINUAR")
+            self.btn_pause.setText(tr("▶️ CONTINUAR"))
             self.btn_pause.setStyleSheet("background-color: #059669; color: white;")
             self.lbl_hint.setText(
-                (f"Pausado: {reason}. " if reason else "")
-                + "Clique em CONTINUAR e solte o mouse: o desenho volta do mesmo ponto."
+                (tr("Pausado: {reason}.", reason=reason) + " " if reason else "")
+                + tr("Clique em CONTINUAR e solte o mouse: o desenho volta do mesmo ponto.")
             )
         else:
-            self.lbl_title.setText("🎨 Desenhando...")
+            self.lbl_title.setText(tr("🎨 Desenhando..."))
             self.lbl_title.setStyleSheet("color: #6366F1;")
-            self.btn_pause.setText("⏸️ PAUSAR")
+            self.btn_pause.setText(tr("⏸️ PAUSAR"))
             self.btn_pause.setStyleSheet("")
-            self.lbl_hint.setText(HINT_DRAWING)
+            self.lbl_hint.setText(tr(HINT_DRAWING))
         if self._click_through:
             # Over the canvas the dialog lets the drawing clicks through, but
             # while paused its buttons must be clickable.
@@ -308,12 +309,12 @@ class CompletionDialog(QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("🎉 Desenho Concluído!")
+        self.setWindowTitle(tr("🎉 Desenho concluído!"))
         self.setFixedWidth(420)
         self.setStyleSheet(ModernStyles.MAIN_STYLE)
 
         self.elapsed_seconds = elapsed_seconds
-        self.quality_level = QUALITY_LABELS.get(quality_level.lower(), quality_level.capitalize())
+        self.quality_level = tr(QUALITY_SOURCE.get(quality_level.lower(), quality_level.capitalize()))
         self.total_strokes = total_strokes
         self.total_points = total_points
         self.repeat_chosen = False
@@ -325,7 +326,7 @@ class CompletionDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
 
-        lbl_title = QLabel("🎉 Desenho Concluído!", self)
+        lbl_title = QLabel(tr("🎉 Desenho concluído!"), self)
         lbl_title.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         lbl_title.setStyleSheet("color: #4ADE80;")
         lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -338,12 +339,12 @@ class CompletionDialog(QDialog):
         c_layout.setSpacing(8)
 
         c_layout.addWidget(QLabel(
-            f"⏱ <b>Tempo real utilizado:</b> {TimeEstimator.format_time(self.elapsed_seconds)}", self
+            tr("⏱ <b>Tempo real utilizado:</b> {time}", time=TimeEstimator.format_time(self.elapsed_seconds)), self
         ))
-        c_layout.addWidget(QLabel(f"⭐ <b>Qualidade:</b> {self.quality_level}", self))
+        c_layout.addWidget(QLabel(tr("⭐ <b>Qualidade:</b> {quality}", quality=self.quality_level), self))
         c_layout.addWidget(QLabel(
-            f"🖌️ <b>Traços realizados:</b> {self.total_strokes:,}"
-            + (f" &nbsp;·&nbsp; <b>Pontos:</b> {self.total_points:,}" if self.total_points else ""),
+            tr("🖌️ <b>Traços realizados:</b> {strokes:,}", strokes=self.total_strokes)
+            + (tr(" &nbsp;·&nbsp; <b>Pontos:</b> {points:,}", points=self.total_points) if self.total_points else ""),
             self,
         ))
 
@@ -352,15 +353,15 @@ class CompletionDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
 
-        btn_new = QPushButton("🆕 NOVO DESENHO", self)
+        btn_new = QPushButton(tr("🆕 NOVO DESENHO"), self)
         btn_new.setFixedHeight(42)
         btn_new.clicked.connect(self.accept)
         btn_layout.addWidget(btn_new)
 
-        btn_repeat = QPushButton("🔄 REPETIR DESENHO", self)
+        btn_repeat = QPushButton(tr("🔄 REPETIR DESENHO"), self)
         btn_repeat.setObjectName("PrimaryButton")
         btn_repeat.setFixedHeight(42)
-        btn_repeat.setToolTip("Redesenha na mesma área, com nova contagem regressiva.")
+        btn_repeat.setToolTip(tr("Redesenha na mesma área, com nova contagem regressiva."))
         btn_repeat.clicked.connect(self._request_repeat)
         btn_layout.addWidget(btn_repeat)
 

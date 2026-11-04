@@ -1,17 +1,18 @@
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Slot
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
     QLabel, QMainWindow, QMessageBox, QPushButton, QRadioButton, QScrollArea,
     QSlider, QVBoxLayout, QWidget
 )
 
-from src import DONATE_URL
+from src import DONATE_URL, __version__
 from src.async_processor import ImageProcessorWorker
 from src.config import ConfigManager
 from src.drawing_engine import DrawingEngineWorker
+from src.i18n import LANGUAGES, detect_language, get_language, set_language, tr
 from src.image_loader import SUPPORTED_LABEL, ImageInfo, ImageLoader
 from src.input_guard import RealMouseGuard
 from src.logger import get_logger
@@ -21,6 +22,7 @@ from src.ui.drawing_dialog import CompletionDialog, DrawingProgressDialog
 from src.ui.overlay_widget import AreaSelectionOverlay
 from src.ui.settings_dialog import SettingsDialog
 from src.ui.styles import ModernStyles, apply_object_name
+from src.ui.tutorial_dialog import TutorialDialog
 from src.ui.widgets import ImagePreviewCanvas, RecentImagesBar
 
 log = get_logger("ui.main")
@@ -28,8 +30,20 @@ log = get_logger("ui.main")
 Stroke = List[Tuple[int, int]]
 
 QUALITY_ORDER = ("baixa", "media", "alta")
-QUALITY_LABELS = {"baixa": "Baixa", "media": "Média", "alta": "Alta"}
+QUALITY_SOURCE = {"baixa": "Baixa", "media": "Média", "alta": "Alta"}
 MODE_ORDER = ("contour", "bw")
+
+
+def quality_label(level: str) -> str:
+    return tr(QUALITY_SOURCE.get(level, "Média"))
+
+
+def resource_path(*parts: str) -> str:
+    import os
+    import sys
+
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    return os.path.join(base, *parts)
 
 # Reprocessing is expensive, so geometry changes are coalesced; dragging the
 # speed slider used to spawn one full OpenCV pass per pixel of travel.
@@ -47,11 +61,12 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AutoDraw — Desenhista Automático")
-        self.setMinimumSize(560, 800)
-        self.resize(600, 880)
+        self.setMinimumSize(580, 800)
+        self.resize(620, 900)
 
         self.config_manager = ConfigManager()
+        set_language(self.config_manager.get("language") or detect_language())
+        self.setWindowTitle(tr("AutoDraw — Desenhista Automático"))
         self.setStyleSheet(ModernStyles.MAIN_STYLE)
         self.setAcceptDrops(True)  # Enable Drag & Drop for image files
 
@@ -121,33 +136,78 @@ class MainWindow(QMainWindow):
         card = QFrame(self)
         card.setObjectName("Card")
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setContentsMargins(16, 12, 12, 12)
+        layout.setSpacing(12)
+
+        logo = QLabel(self)
+        pixmap = QPixmap(resource_path("assets", "autodraw.png"))
+        if not pixmap.isNull():
+            logo.setPixmap(pixmap.scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            logo.setText("🎨")
+            logo.setFont(QFont("Segoe UI Emoji", 24))
+        layout.addWidget(logo)
 
         titles = QVBoxLayout()
-        lbl_title = QLabel("🎨 AutoDraw", self)
+        titles.setSpacing(2)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        lbl_title = QLabel("AutoDraw", self)
         lbl_title.setObjectName("HeaderTitle")
-        lbl_subtitle = QLabel("Transforme qualquer imagem em traços automáticos.", self)
+        title_row.addWidget(lbl_title)
+        lbl_version = QLabel(f"v{__version__}", self)
+        lbl_version.setObjectName("VersionPill")
+        title_row.addWidget(lbl_version, 0, Qt.AlignmentFlag.AlignVCenter)
+        title_row.addStretch()
+        titles.addLayout(title_row)
+        lbl_subtitle = QLabel(tr("Transforme qualquer imagem em traços automáticos."), self)
         lbl_subtitle.setObjectName("HeaderSubtitle")
-        titles.addWidget(lbl_title)
         titles.addWidget(lbl_subtitle)
-        layout.addLayout(titles)
-        layout.addStretch()
+        layout.addLayout(titles, 1)
 
-        btn_donate = QPushButton("☕", self)
-        btn_donate.setFixedSize(38, 38)
-        btn_donate.setStyleSheet(HEADER_ICON_STYLE)
-        btn_donate.setToolTip("Apoiar o projeto (Ko-fi)")
-        btn_donate.clicked.connect(self._open_donate)
-        layout.addWidget(btn_donate)
+        globe = QLabel("🌐", self)
+        globe.setToolTip(tr("Idioma"))
+        layout.addWidget(globe, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        btn_settings = QPushButton("⚙️", self)
-        btn_settings.setFixedSize(38, 38)
-        btn_settings.setStyleSheet(HEADER_ICON_STYLE)
-        btn_settings.setToolTip("Configurações")
-        btn_settings.clicked.connect(self._open_settings)
-        layout.addWidget(btn_settings)
+        self.cmb_language = QComboBox(self)
+        self.cmb_language.setObjectName("LanguageBox")
+        self.cmb_language.setToolTip(tr("Idioma"))
+        for code, name in LANGUAGES.items():
+            self.cmb_language.addItem(name, code)
+        self.cmb_language.setCurrentIndex(max(0, self.cmb_language.findData(get_language())))
+        self.cmb_language.currentIndexChanged.connect(
+            lambda i: self._change_language(self.cmb_language.itemData(i))
+        )
+        layout.addWidget(self.cmb_language, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        for icon, tip, slot in (
+            ("❔", tr("Como usar (tutorial)"), self.show_tutorial),
+            ("☕", tr("Apoiar o projeto (Ko-fi)"), self._open_donate),
+            ("⚙️", tr("Configurações"), self._open_settings),
+        ):
+            button = QPushButton(icon, self)
+            button.setFixedSize(38, 38)
+            button.setStyleSheet(HEADER_ICON_STYLE)
+            button.setToolTip(tip)
+            button.clicked.connect(slot)
+            layout.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
 
         return card
+
+    def _section_title(self, step: int, text: str) -> QHBoxLayout:
+        """A numbered section heading: the four cards read as the four steps."""
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        badge = QLabel(str(step), self)
+        badge.setObjectName("StepBadge")
+        badge.setFixedSize(24, 24)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row.addWidget(badge)
+        label = QLabel(text, self)
+        label.setObjectName("SectionTitle")
+        row.addWidget(label)
+        row.addStretch()
+        return row
 
     def _build_image_card(self) -> QFrame:
         card = QFrame(self)
@@ -155,14 +215,15 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
+        layout.addLayout(self._section_title(1, tr("Escolha a imagem")))
 
         top_row = QHBoxLayout()
-        self.btn_choose_image = QPushButton("📁 ESCOLHER IMAGEM", self)
+        self.btn_choose_image = QPushButton(tr("📁 ESCOLHER IMAGEM"), self)
         self.btn_choose_image.setFixedHeight(38)
         self.btn_choose_image.clicked.connect(self._choose_image_dialog)
         top_row.addWidget(self.btn_choose_image)
 
-        self.lbl_image_info = QLabel("Nenhuma imagem selecionada", self)
+        self.lbl_image_info = QLabel(tr("Nenhuma imagem selecionada"), self)
         self.lbl_image_info.setObjectName("Badge")
         top_row.addWidget(self.lbl_image_info)
         top_row.addStretch()
@@ -172,11 +233,11 @@ class MainWindow(QMainWindow):
         tab_row.setSpacing(6)
         self.preview_tabs: Dict[str, QPushButton] = {}
         for mode, text in (
-            ("processed", "🎨 Resultado Processado"),
-            ("original", "🖼️ Imagem Original"),
-            ("area", "📐 Simulação no Paint"),
+            ("processed", "🎨 Resultado"),
+            ("original", "🖼️ Original"),
+            ("area", "📐 Simulação"),
         ):
-            button = QPushButton(text, self)
+            button = QPushButton(tr(text), self)
             button.setObjectName("TabButton")
             button.setCheckable(True)
             button.setChecked(mode == "processed")
@@ -202,31 +263,29 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
-        lbl_title = QLabel("⚙️ Configuração do Desenho", self)
-        lbl_title.setObjectName("SectionTitle")
-        layout.addWidget(lbl_title)
+        layout.addLayout(self._section_title(2, tr("Ajuste o desenho")))
 
         # Quality + mode
         quality_row = QHBoxLayout()
-        lbl_quality = QLabel("Qualidade:", self)
+        lbl_quality = QLabel(tr("Qualidade:"), self)
         lbl_quality.setStyleSheet("font-weight: 600;")
         quality_row.addWidget(lbl_quality)
 
         self.cmb_quality = QComboBox(self)
-        self.cmb_quality.addItems(["Baixa", "Média", "Alta"])
+        self.cmb_quality.addItems([tr("Baixa"), tr("Média"), tr("Alta")])
         self.cmb_quality.setCurrentIndex(1)
         self.cmb_quality.currentIndexChanged.connect(self._on_geometry_option_changed)
         quality_row.addWidget(self.cmb_quality)
 
-        lbl_mode = QLabel("Modo:", self)
+        lbl_mode = QLabel(tr("Modo:"), self)
         lbl_mode.setStyleSheet("font-weight: 600;")
         quality_row.addWidget(lbl_mode)
 
         self.cmb_mode = QComboBox(self)
-        self.cmb_mode.addItems(["Contorno", "Preto e Branco"])
+        self.cmb_mode.addItems([tr("Contorno"), tr("Preto e Branco")])
         self.cmb_mode.setToolTip(
-            "Contorno: apenas as bordas da imagem.\n"
-            "Preto e Branco: bordas mais preenchimento hachurado das áreas escuras."
+            tr("Contorno: apenas as bordas da imagem.\n"
+               "Preto e Branco: bordas mais preenchimento hachurado das áreas escuras.")
         )
         self.cmb_mode.currentIndexChanged.connect(self._on_geometry_option_changed)
         quality_row.addWidget(self.cmb_mode)
@@ -236,14 +295,14 @@ class MainWindow(QMainWindow):
 
         # Aspect ratio
         aspect_row = QHBoxLayout()
-        lbl_aspect = QLabel("Ajuste da Imagem:", self)
+        lbl_aspect = QLabel(tr("Ajuste da imagem:"), self)
         lbl_aspect.setStyleSheet("font-weight: 600;")
         aspect_row.addWidget(lbl_aspect)
 
         self.btn_group_aspect = QButtonGroup(self)
-        self.radio_aspect_keep = QRadioButton("Manter proporção", self)
-        self.radio_aspect_fill = QRadioButton("Preencher área", self)
-        self.radio_aspect_stretch = QRadioButton("Esticar", self)
+        self.radio_aspect_keep = QRadioButton(tr("Manter proporção"), self)
+        self.radio_aspect_fill = QRadioButton(tr("Preencher área"), self)
+        self.radio_aspect_stretch = QRadioButton(tr("Esticar"), self)
         for index, radio in enumerate(
             (self.radio_aspect_keep, self.radio_aspect_fill, self.radio_aspect_stretch)
         ):
@@ -255,11 +314,11 @@ class MainWindow(QMainWindow):
 
         # Speed
         speed_row = QHBoxLayout()
-        lbl_speed = QLabel("Velocidade:", self)
+        lbl_speed = QLabel(tr("Velocidade:"), self)
         lbl_speed.setStyleSheet("font-weight: 600;")
         speed_row.addWidget(lbl_speed)
 
-        lbl_slow = QLabel("Lento", self)
+        lbl_slow = QLabel(tr("Lento"), self)
         lbl_slow.setStyleSheet("color: #64748B; font-size: 11px;")
         speed_row.addWidget(lbl_slow)
 
@@ -269,12 +328,12 @@ class MainWindow(QMainWindow):
         self.slider_speed.valueChanged.connect(self._on_speed_changed)
         speed_row.addWidget(self.slider_speed)
 
-        lbl_fast = QLabel("Rápido", self)
+        lbl_fast = QLabel(tr("Rápido"), self)
         lbl_fast.setStyleSheet("color: #64748B; font-size: 11px;")
         speed_row.addWidget(lbl_fast)
         layout.addLayout(speed_row)
 
-        self.chk_simplify = QCheckBox("Simplificar imagem (remover ruídos pequenos)", self)
+        self.chk_simplify = QCheckBox(tr("Simplificar imagem (remover ruídos pequenos)"), self)
         self.chk_simplify.toggled.connect(self._on_geometry_option_changed)
         layout.addWidget(self.chk_simplify)
 
@@ -283,18 +342,22 @@ class MainWindow(QMainWindow):
     def _build_area_card(self) -> QFrame:
         card = QFrame(self)
         card.setObjectName("Card")
-        layout = QHBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(12)
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 14, 16, 14)
+        outer.setSpacing(10)
+        outer.addLayout(self._section_title(3, tr("Marque a área no programa de desenho")))
 
-        self.btn_select_area = QPushButton("🖱️ SELECIONAR ÁREA DE DESENHO", self)
+        layout = QHBoxLayout()
+        layout.setSpacing(12)
+        self.btn_select_area = QPushButton(tr("🖱️ SELECIONAR ÁREA"), self)
         self.btn_select_area.setFixedHeight(42)
         self.btn_select_area.clicked.connect(self._start_area_selection)
         layout.addWidget(self.btn_select_area)
 
-        self.lbl_area_status = QLabel("Área: ❌ Não selecionada", self)
+        self.lbl_area_status = QLabel(tr("Área: ❌ Não selecionada"), self)
         self.lbl_area_status.setObjectName("BadgeWarning")
-        layout.addWidget(self.lbl_area_status)
+        layout.addWidget(self.lbl_area_status, 1)
+        outer.addLayout(layout)
 
         return card
 
@@ -304,14 +367,15 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
+        layout.addLayout(self._section_title(4, tr("Desenhe")))
 
-        self.lbl_estimated_time = QLabel("⏱ Tempo estimado: --", self)
+        self.lbl_estimated_time = QLabel(tr("⏱ Tempo estimado: --"), self)
         self.lbl_estimated_time.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self.lbl_estimated_time.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_estimated_time.setStyleSheet("color: #4ADE80;")
         layout.addWidget(self.lbl_estimated_time)
 
-        self.lbl_trajectory_summary = QLabel("Aguardando seleção de imagem e área...", self)
+        self.lbl_trajectory_summary = QLabel(tr("Aguardando seleção de imagem e área..."), self)
         self.lbl_trajectory_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_trajectory_summary.setStyleSheet("color: #94A3B8; font-size: 12px;")
         layout.addWidget(self.lbl_trajectory_summary)
@@ -323,7 +387,7 @@ class MainWindow(QMainWindow):
         self.lbl_volume_warning.setVisible(False)
         layout.addWidget(self.lbl_volume_warning)
 
-        self.btn_draw = QPushButton("▶ DESENHAR", self)
+        self.btn_draw = QPushButton(tr("▶ DESENHAR"), self)
         self.btn_draw.setObjectName("PrimaryButton")
         self.btn_draw.setFixedHeight(50)
         self.btn_draw.setEnabled(False)
@@ -339,29 +403,66 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 12, 16, 12)
 
         texts = QVBoxLayout()
-        lbl_title = QLabel("☕ Apoie o AutoDraw", self)
+        lbl_title = QLabel(tr("☕ Apoie o AutoDraw"), self)
         lbl_title.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        lbl_text = QLabel("O AutoDraw é grátis e de código aberto. Se ele te ajudou, considere fazer uma doação.", self)
+        lbl_text = QLabel(tr("O AutoDraw é grátis e de código aberto. Se ele te ajudou, considere fazer uma doação."), self)
         lbl_text.setObjectName("HeaderSubtitle")
         lbl_text.setWordWrap(True)
         texts.addWidget(lbl_title)
         texts.addWidget(lbl_text)
         layout.addLayout(texts, 1)
 
-        btn = QPushButton("💜 APOIAR NO KO-FI", self)
+        btn = QPushButton(tr("💜 APOIAR NO KO-FI"), self)
         btn.setFixedHeight(38)
         btn.setToolTip(DONATE_URL)
         btn.clicked.connect(self._open_donate)
         layout.addWidget(btn)
         return card
 
+    # ---------------- language & tutorial ----------------
+
+    def _change_language(self, code: str) -> None:
+        """Rebuilds the window in the new language, keeping the loaded image and area."""
+        if not code or code == get_language():
+            return
+        if self.drawing_worker is not None:
+            return  # never rebuild the UI under a running drawing
+        if self._settings_save_timer.isActive():
+            self._settings_save_timer.stop()
+            self._persist_drawing_settings()
+        set_language(code)
+        self.config_manager.set("language", code)
+        self.setWindowTitle(tr("AutoDraw — Desenhista Automático"))
+
+        strokes, points, seconds = self.processed_strokes, self.total_points, self.estimated_seconds
+        self._init_ui()  # setCentralWidget() disposes of the old widgets
+        self._load_saved_defaults()
+        if self.current_image_info is not None:
+            self._show_image_info(self.current_image_info)
+        if strokes:
+            self.processed_strokes, self.total_points, self.estimated_seconds = strokes, points, seconds
+            area = self.selected_area or {"w": 0, "h": 0}
+            self.preview_canvas.set_vector_paths(strokes, area.get("w", 0), area.get("h", 0))
+            self._update_estimate_labels()
+        self._update_draw_button_state()
+        log.info("Language switched to %s", code)
+
+    def show_tutorial(self) -> None:
+        TutorialDialog(self).exec()
+        self.config_manager.set("tutorial_seen", True)
+
+    def maybe_show_tutorial(self) -> None:
+        """First run: walk the user through the four steps once."""
+        if not self.config_manager.get("tutorial_seen", False):
+            QTimer.singleShot(300, self.show_tutorial)
+
     @staticmethod
     def _open_donate() -> None:
         QDesktopServices.openUrl(QUrl(DONATE_URL))
 
     def _build_footer_badge(self) -> QLabel:
-        badge = QLabel("⚡ ESC cancela o desenho · mexer ou clicar com o mouse pausa", self)
-        badge.setObjectName("BadgeWarning")
+        badge = QLabel(tr("⚡ ESC cancela o desenho · mexer ou clicar com o mouse pausa"), self)
+        badge.setObjectName("HintBar")
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return badge
 
@@ -387,8 +488,8 @@ class MainWindow(QMainWindow):
             if event.mimeData().hasUrls():
                 QMessageBox.warning(
                     self,
-                    "Formato não suportado",
-                    f"❌ Formato de imagem não suportado.\n\nAceitos: {SUPPORTED_LABEL}",
+                    tr("Formato não suportado"),
+                    tr("❌ Formato de imagem não suportado.\n\nAceitos: {formats}", formats=SUPPORTED_LABEL),
                 )
             event.ignore()
             return
@@ -445,11 +546,11 @@ class MainWindow(QMainWindow):
     def _update_area_label(self):
         area = self.selected_area
         if not area or area.get("w", 0) <= 0 or area.get("h", 0) <= 0:
-            self.lbl_area_status.setText("Área: ❌ Não selecionada")
+            self.lbl_area_status.setText(tr("Área: ❌ Não selecionada"))
             apply_object_name(self.lbl_area_status, "BadgeWarning")
             return
         self.lbl_area_status.setText(
-            f"Área: {area['w']}×{area['h']} px em ({area['x']}, {area['y']})"
+            tr("Área: {w}×{h} px em ({x}, {y})", w=area["w"], h=area["h"], x=area["x"], y=area["y"])
         )
         apply_object_name(self.lbl_area_status, "BadgeSuccess")
 
@@ -457,11 +558,11 @@ class MainWindow(QMainWindow):
 
     def _choose_image_dialog(self):
         file_filter = (
-            "Imagens Suportadas (*.png *.jpg *.jpeg *.bmp *.webp *.gif *.svg *.tif *.tiff);;"
-            "Todos os arquivos (*.*)"
+            tr("Imagens suportadas") + " (*.png *.jpg *.jpeg *.bmp *.webp *.gif *.svg *.tif *.tiff);;"
+            + tr("Todos os arquivos") + " (*.*)"
         )
         filepath, _ = QFileDialog.getOpenFileName(
-            self, "Escolher imagem para AutoDraw", "", file_filter
+            self, tr("Escolher imagem para AutoDraw"), "", file_filter
         )
         if filepath:
             self._load_image_from_path(filepath)
@@ -471,20 +572,22 @@ class MainWindow(QMainWindow):
         if info is None:
             # Previously a failed load did nothing at all, leaving the user
             # staring at an unchanged window with no explanation.
-            QMessageBox.critical(self, "Não foi possível abrir a imagem", error or "Erro desconhecido.")
+            QMessageBox.critical(self, tr("Não foi possível abrir a imagem"), error or tr("Erro desconhecido."))
             return
 
         self.current_image_info = info
         self.config_manager.add_recent_image(filepath)
         self.recent_bar.set_recent_files(self.config_manager.get("recent_images", []))
 
-        self.lbl_image_info.setText(f"{info.filename} — {info.width} × {info.height} px")
-        apply_object_name(self.lbl_image_info, "BadgeSuccess")
-
-        self.preview_canvas.set_image(info.cv_image)
+        self._show_image_info(info)
         self.preview_canvas.clear_vector_paths()
         self._invalidate_strokes()
         self._schedule_recalculation()
+
+    def _show_image_info(self, info: ImageInfo) -> None:
+        self.lbl_image_info.setText(f"{info.filename} — {info.width} × {info.height} px")
+        apply_object_name(self.lbl_image_info, "BadgeSuccess")
+        self.preview_canvas.set_image(info.cv_image)
 
     # ---------------- area selection ----------------
 
@@ -573,8 +676,8 @@ class MainWindow(QMainWindow):
     def _schedule_recalculation(self):
         if not self.current_image_info or not self.selected_area:
             return
-        self.lbl_estimated_time.setText("⏱ Analisando imagem...")
-        self.lbl_trajectory_summary.setText("Calculando trajetórias...")
+        self.lbl_estimated_time.setText(tr("⏱ Analisando imagem..."))
+        self.lbl_trajectory_summary.setText(tr("Calculando trajetórias..."))
         self._recalc_timer.start()
 
     def _start_processing(self):
@@ -658,11 +761,11 @@ class MainWindow(QMainWindow):
         if self._is_stale(request_id):
             return
         log.error("Processing failed: %s", message)
-        self.lbl_estimated_time.setText("⏱ Tempo estimado: --")
-        self.lbl_trajectory_summary.setText("❌ Falha ao processar a imagem.")
+        self.lbl_estimated_time.setText(tr("⏱ Tempo estimado: --"))
+        self.lbl_trajectory_summary.setText(tr("❌ Falha ao processar a imagem."))
         self._invalidate_strokes()
         QMessageBox.critical(
-            self, "Erro ao processar", f"Não foi possível processar a imagem:\n\n{message}"
+            self, tr("Erro ao processar"), tr("Não foi possível processar a imagem:\n\n{message}", message=message)
         )
 
     @Slot(int)
@@ -671,11 +774,12 @@ class MainWindow(QMainWindow):
 
     def _update_estimate_labels(self):
         self.lbl_estimated_time.setText(
-            f"⏱ Tempo estimado: ≈ {TimeEstimator.format_time(self.estimated_seconds)}"
+            tr("⏱ Tempo estimado: ≈ {time}", time=TimeEstimator.format_time(self.estimated_seconds))
         )
         self.lbl_trajectory_summary.setText(
-            f"Traços: {len(self.processed_strokes):,} | Pontos: {self.total_points:,} | "
-            f"Qualidade: {QUALITY_LABELS[self._current_quality()]}"
+            tr("Traços: {strokes:,} | Pontos: {points:,} | Qualidade: {quality}",
+               strokes=len(self.processed_strokes), points=self.total_points,
+               quality=quality_label(self._current_quality()))
         )
 
         threshold = int(self.config_manager.get("warn_above_points", 300_000))
@@ -683,9 +787,9 @@ class MainWindow(QMainWindow):
         self.lbl_volume_warning.setVisible(over_budget)
         if over_budget:
             self.lbl_volume_warning.setText(
-                f"⚠️ Desenho muito longo: {self.total_points:,} pontos "
-                f"(≈ {TimeEstimator.format_time(self.estimated_seconds)}). "
-                "Reduza a qualidade ou a área para terminar mais rápido."
+                tr("⚠️ Desenho muito longo: {points:,} pontos (≈ {time}). "
+                   "Reduza a qualidade ou a área para terminar mais rápido.",
+                   points=self.total_points, time=TimeEstimator.format_time(self.estimated_seconds))
             )
 
     def _update_draw_button_state(self):
@@ -710,7 +814,7 @@ class MainWindow(QMainWindow):
     def _start_drawing_process(self):
         if not self.current_image_info or not self.selected_area or not self.processed_strokes:
             QMessageBox.warning(
-                self, "Aviso", "Por favor, selecione uma imagem e uma área de desenho."
+                self, tr("Aviso"), tr("Por favor, selecione uma imagem e uma área de desenho.")
             )
             return
 
@@ -745,10 +849,10 @@ class MainWindow(QMainWindow):
 
         answer = QMessageBox.question(
             self,
-            "Desenho muito longo",
-            f"Este desenho tem {self.total_points:,} pontos e deve levar cerca de "
-            f"{TimeEstimator.format_time(self.estimated_seconds)}.\n\n"
-            "O mouse ficará ocupado todo esse tempo. Deseja continuar?",
+            tr("Desenho muito longo"),
+            tr("Este desenho tem {points:,} pontos e deve levar cerca de {time}.\n\n"
+               "O mouse ficará ocupado todo esse tempo. Deseja continuar?",
+               points=self.total_points, time=TimeEstimator.format_time(self.estimated_seconds)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -816,7 +920,7 @@ class MainWindow(QMainWindow):
         if self.drawing_worker is not worker or not worker.isRunning():
             return
         worker.pause()
-        dialog.show_paused(reason)
+        dialog.show_paused(tr(reason))
         if not dialog.isVisible():
             # Progress window turned off in the settings: it is the only
             # place with the Continue button, so show it now.
@@ -883,14 +987,14 @@ class MainWindow(QMainWindow):
         self._restore_after_drawing()
         if self.progress_dialog is not None:
             self.progress_dialog.reject()
-        QMessageBox.warning(self, "Cancelado", f"O desenho foi cancelado: {reason}")
+        QMessageBox.warning(self, tr("Cancelado"), tr("O desenho foi cancelado: {reason}", reason=tr(reason)))
 
     @Slot(str)
     def _on_drawing_error(self, err_msg: str):
         self._restore_after_drawing()
         if self.progress_dialog is not None:
             self.progress_dialog.reject()
-        QMessageBox.critical(self, "Erro", f"Ocorreu um erro durante o desenho:\n{err_msg}")
+        QMessageBox.critical(self, tr("Erro"), tr("Ocorreu um erro durante o desenho:\n{error}", error=err_msg))
 
     # ---------------- preview tabs & teardown ----------------
 

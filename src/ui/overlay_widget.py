@@ -2,6 +2,7 @@ from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from src.i18n import tr
 from src.mouse_controller import MouseController
 
 MIN_AREA_SIDE = 20
@@ -124,8 +125,8 @@ class AreaSelectionOverlay(QWidget):
             painter.drawText(
                 self.rect(),
                 Qt.AlignmentFlag.AlignCenter,
-                "Clique e arraste com o mouse para selecionar a área do desenho"
-                "\n\n[ Pressione ESC para cancelar ]",
+                tr("Clique e arraste com o mouse para selecionar a área do desenho"
+                   "\n\n[ Pressione ESC para cancelar ]"),
             )
             return
 
@@ -142,9 +143,9 @@ class AreaSelectionOverlay(QWidget):
 
         # Report the physical size, since that is what will actually be drawn.
         physical = QRect(QPoint(*self._start_physical), QPoint(*self._current_physical)).normalized()
-        badge_text = f" Área de Desenho: {physical.width()} × {physical.height()} px "
+        badge_text = tr(" Área de desenho: {w} × {h} px ", w=physical.width(), h=physical.height())
 
-        badge_w, badge_h = 260, 32
+        badge_w, badge_h = 300, 32
         badge_x = max(rect.x(), min(rect.x() + (rect.width() - badge_w) // 2, self.width() - badge_w - 10))
         badge_y = rect.y() - badge_h - 8 if rect.y() >= badge_h + 10 else rect.y() + 8
         badge_rect = QRect(badge_x, badge_y, badge_w, badge_h)

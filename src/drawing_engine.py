@@ -226,7 +226,7 @@ class DrawingEngineWorker(QThread):
         except Exception as e:
             log.exception("Drawing failed")
             self.mouse.safe_reset()
-            self.drawing_error.emit(f"Erro durante o desenho: {e}")
+            self.drawing_error.emit(str(e) or type(e).__name__)
 
         finally:
             self.mouse.safe_reset()

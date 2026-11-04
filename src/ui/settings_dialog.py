@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config import ConfigManager
+from src.i18n import tr
 from src.logger import app_dir
 from src.ui.styles import ModernStyles
 
@@ -21,7 +22,7 @@ class SettingsDialog(QDialog):
     def __init__(self, config_manager: ConfigManager, parent=None):
         super().__init__(parent)
         self.config_manager = config_manager
-        self.setWindowTitle("Configurações — AutoDraw")
+        self.setWindowTitle(tr("Configurações — AutoDraw"))
         self.setFixedWidth(460)
         self.setStyleSheet(ModernStyles.MAIN_STYLE)
 
@@ -32,7 +33,7 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
-        lbl_title = QLabel("⚙️ Configurações", self)
+        lbl_title = QLabel(tr("⚙️ Configurações"), self)
         lbl_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
         layout.addWidget(lbl_title)
 
@@ -42,45 +43,45 @@ class SettingsDialog(QDialog):
         layout.addLayout(self._build_buttons())
 
     def _build_general_group(self) -> QGroupBox:
-        group = QGroupBox("Geral", self)
+        group = QGroupBox(tr("Geral"), self)
         g_layout = QVBoxLayout(group)
 
-        self.chk_confirm = QCheckBox("Confirmar antes de começar", self)
+        self.chk_confirm = QCheckBox(tr("Confirmar antes de começar"), self)
         self.chk_confirm.setChecked(self.config_manager.get("confirm_before_start", True))
         self.chk_confirm.setToolTip(
-            "Mostra o resumo do desenho antes de assumir o mouse.\n"
-            "Desmarcado automaticamente se você usar 'Não mostrar novamente'."
+            tr("Mostra o resumo do desenho antes de assumir o mouse.\n"
+               "Desmarcado automaticamente se você usar 'Não mostrar novamente'.")
         )
         g_layout.addWidget(self.chk_confirm)
 
-        self.chk_progress = QCheckBox("Mostrar janela de progresso", self)
+        self.chk_progress = QCheckBox(tr("Mostrar janela de progresso"), self)
         self.chk_progress.setChecked(self.config_manager.get("show_progress", True))
         g_layout.addWidget(self.chk_progress)
 
-        self.chk_sound = QCheckBox("Tocar som ao terminar", self)
+        self.chk_sound = QCheckBox(tr("Tocar som ao terminar"), self)
         self.chk_sound.setChecked(self.config_manager.get("sound_on_finish", True))
         g_layout.addWidget(self.chk_sound)
 
         return group
 
     def _build_drawing_group(self) -> QGroupBox:
-        group = QGroupBox("Padrões de Desenho", self)
+        group = QGroupBox(tr("Padrões de desenho"), self)
         d_layout = QFormLayout(group)
 
         self.cmb_mode = QComboBox(self)
-        self.cmb_mode.addItems(MODE_LABELS)
+        self.cmb_mode.addItems([tr(label) for label in MODE_LABELS])
         self.cmb_mode.setCurrentIndex(_index_of(MODE_ORDER, self.config_manager.get("mode", "contour"), 0))
         self.cmb_mode.setToolTip(
-            "Contorno: apenas as bordas.\nPreto e Branco: bordas + preenchimento hachurado."
+            tr("Contorno: apenas as bordas.\nPreto e Branco: bordas + preenchimento hachurado.")
         )
-        d_layout.addRow("Modo padrão:", self.cmb_mode)
+        d_layout.addRow(tr("Modo padrão:"), self.cmb_mode)
 
         self.cmb_quality = QComboBox(self)
-        self.cmb_quality.addItems(QUALITY_LABELS)
+        self.cmb_quality.addItems([tr(label) for label in QUALITY_LABELS])
         self.cmb_quality.setCurrentIndex(
             _index_of(QUALITY_ORDER, str(self.config_manager.get("quality_level", "media")).lower(), 1)
         )
-        d_layout.addRow("Qualidade padrão:", self.cmb_quality)
+        d_layout.addRow(tr("Qualidade padrão:"), self.cmb_quality)
 
         speed_row = QHBoxLayout()
         self.slider_speed = QSlider(Qt.Orientation.Horizontal, self)
@@ -91,26 +92,26 @@ class SettingsDialog(QDialog):
         self.slider_speed.valueChanged.connect(lambda v: self.lbl_speed_value.setText(str(v)))
         speed_row.addWidget(self.slider_speed)
         speed_row.addWidget(self.lbl_speed_value)
-        d_layout.addRow("Velocidade padrão:", speed_row)
+        d_layout.addRow(tr("Velocidade padrão:"), speed_row)
 
         self.spin_warn = QSpinBox(self)
         self.spin_warn.setRange(0, 100_000_000)
         self.spin_warn.setSingleStep(50_000)
         self.spin_warn.setGroupSeparatorShown(True)
-        self.spin_warn.setSpecialValueText("desativado")
+        self.spin_warn.setSpecialValueText(tr("desativado"))
         self.spin_warn.setValue(int(self.config_manager.get("warn_above_points", 300_000)))
         self.spin_warn.setToolTip(
-            "Avisa antes de desenhos muito longos.\n"
-            "Qualidade Alta em áreas grandes passa facilmente de 1 milhão de pontos."
+            tr("Avisa antes de desenhos muito longos.\n"
+               "Qualidade Alta em áreas grandes passa facilmente de 1 milhão de pontos.")
         )
-        d_layout.addRow("Avisar acima de (pontos):", self.spin_warn)
+        d_layout.addRow(tr("Avisar acima de (pontos):"), self.spin_warn)
 
         return group
 
     def _build_footer(self) -> QLabel:
         factor = self.config_manager.get("calibration_factor", 1.0)
         footer = QLabel(
-            f"Calibração do estimador: ×{factor:.2f}  ·  Log: {app_dir() / 'autodraw.log'}", self
+            tr("Calibração do estimador: ×{factor:.2f}  ·  Log: {path}", factor=factor, path=app_dir() / "autodraw.log"), self
         )
         footer.setStyleSheet("color: #64748B; font-size: 11px;")
         footer.setWordWrap(True)
@@ -119,18 +120,18 @@ class SettingsDialog(QDialog):
     def _build_buttons(self) -> QHBoxLayout:
         btn_layout = QHBoxLayout()
 
-        btn_reset = QPushButton("Restaurar padrões", self)
-        btn_reset.setToolTip("Volta todas as opções desta janela aos valores originais.")
+        btn_reset = QPushButton(tr("Restaurar padrões"), self)
+        btn_reset.setToolTip(tr("Volta todas as opções desta janela aos valores originais."))
         btn_reset.clicked.connect(self._reset_defaults)
         btn_layout.addWidget(btn_reset)
 
         btn_layout.addStretch()
 
-        btn_cancel = QPushButton("Cancelar", self)
+        btn_cancel = QPushButton(tr("Cancelar"), self)
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancel)
 
-        btn_save = QPushButton("Salvar", self)
+        btn_save = QPushButton(tr("Salvar"), self)
         btn_save.setObjectName("PrimaryButton")
         btn_save.setDefault(True)
         btn_save.clicked.connect(self._save_and_close)

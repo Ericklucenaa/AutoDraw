@@ -48,6 +48,7 @@ def main():
 
     window = MainWindow()
     window.show()
+    window.maybe_show_tutorial()
 
     exit_code = app.exec()
     log.info("AutoDraw exited with code %s", exit_code)

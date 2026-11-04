@@ -17,7 +17,37 @@ class ModernStyles:
     QFrame#Card {
         background-color: #171926;
         border: 1px solid #2A2D42;
-        border-radius: 12px;
+        border-radius: 14px;
+    }
+
+    QScrollBar:vertical {
+        background: transparent;
+        width: 10px;
+        margin: 2px;
+    }
+
+    QScrollBar::handle:vertical {
+        background: #2F3350;
+        border-radius: 4px;
+        min-height: 30px;
+    }
+
+    QScrollBar::handle:vertical:hover {
+        background: #4F46E5;
+    }
+
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+        background: none;
+        height: 0px;
+    }
+
+    QToolTip {
+        background-color: #1E2034;
+        color: #E2E8F0;
+        border: 1px solid #3F4468;
+        padding: 6px;
+        border-radius: 6px;
     }
 
     QFrame#CardHeader {
@@ -78,7 +108,47 @@ class ModernStyles:
     QLabel#SectionTitle {
         font-size: 14px;
         font-weight: 600;
-        color: #C7D2FE;
+        color: #E0E7FF;
+    }
+
+    /* Numbered step badge in front of each section title */
+    QLabel#StepBadge {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6366F1, stop:1 #8B5CF6);
+        color: #FFFFFF;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+
+    QLabel#VersionPill {
+        background-color: #262940;
+        border: 1px solid #3F4468;
+        border-radius: 8px;
+        padding: 1px 7px;
+        font-size: 11px;
+        color: #A5B4FC;
+    }
+
+    QLabel#StepCounter {
+        font-size: 12px;
+        font-weight: 600;
+        color: #818CF8;
+    }
+
+    /* Quiet hint bar (the ESC reminder under the cards) */
+    QLabel#HintBar {
+        background-color: #141622;
+        border: 1px dashed #2F3350;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #94A3B8;
+    }
+
+    QComboBox#LanguageBox {
+        min-width: 96px;
+        padding: 5px 8px;
+        font-size: 12px;
     }
 
     QLabel#Badge {
@@ -207,7 +277,6 @@ class ModernStyles:
         background-color: #3730A3;
         color: #FFFFFF;
         border-color: #6366F1;
-        font-weight: bold;
     }
 
     /* Radio Buttons & Checkboxes */

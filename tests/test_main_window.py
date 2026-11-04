@@ -1,5 +1,4 @@
 """Behaviour of the main window: debouncing, staleness, persistence, teardown."""
-import cv2
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
@@ -7,25 +6,6 @@ from src.config import ConfigManager
 from src.ui.main_window import MainWindow
 
 
-@pytest.fixture
-def window(qapp, tmp_path, monkeypatch):
-    """A main window whose config lives in a temp dir and which never shows modals."""
-    monkeypatch.setattr(
-        "src.ui.main_window.ConfigManager", lambda: ConfigManager(base_dir=tmp_path)
-    )
-    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))
-    monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: None))
-
-    win = MainWindow()
-    yield win
-    win.close()
-
-
-@pytest.fixture
-def image_path(tmp_path, sample_bgr):
-    path = tmp_path / "drawing.png"
-    cv2.imwrite(str(path), sample_bgr)
-    return str(path)
 
 
 def _settle(qapp, window, timeout_ms=30000):

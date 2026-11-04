@@ -22,6 +22,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "sound_on_finish": True,
     "warn_above_points": 300_000,  # heads-up before very long drawings
     "calibration_factor": 1.0,  # Auto-calibrated time estimation multiplier
+    "language": "",  # 'pt', 'en', 'es'; empty = follow the Windows language
+    "tutorial_seen": False,
 }
 
 # Deliberately absent from DEFAULT_CONFIG: a config file written before this
@@ -31,6 +33,7 @@ ESTIMATOR_MODEL_KEY = "estimator_model"
 VALID_MODES = ("contour", "bw")
 VALID_QUALITY = ("baixa", "media", "alta")
 VALID_ASPECT = ("keep_aspect", "fill", "stretch")
+VALID_LANGUAGES = ("", "pt", "en", "es")
 
 
 class ConfigManager:
@@ -127,7 +130,10 @@ class ConfigManager:
             config["calibration_factor"] = 1.0
             config[ESTIMATOR_MODEL_KEY] = MODEL_VERSION
 
-        for flag in ("simplify_image", "confirm_before_start", "show_progress", "sound_on_finish"):
+        if config.get("language") not in VALID_LANGUAGES:
+            config["language"] = DEFAULT_CONFIG["language"]
+
+        for flag in ("simplify_image", "confirm_before_start", "show_progress", "sound_on_finish", "tutorial_seen"):
             config[flag] = bool(config.get(flag, DEFAULT_CONFIG[flag]))
 
         return config

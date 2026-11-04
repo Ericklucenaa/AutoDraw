@@ -35,6 +35,8 @@ Mantendo a filosofia do projeto: **extremamente simples para o usuário, com qua
 12. **Tela livre durante o desenho**: a janela principal é minimizada e a janela de progresso vai para um canto da tela fora da área de desenho (se não houver canto livre, ela deixa os cliques passarem para a tela de desenho).
 13. **Trava de segurança do mouse**: se você mexer ou clicar com o mouse durante o desenho, ele pausa na hora e solta o clique. O AutoDraw distingue o seu mouse dos movimentos que ele mesmo envia.
 14. **Pausar sem falhas**: ao pausar no meio de um traço, o pincel é levantado na hora; ao continuar, ele volta exatamente do ponto onde parou.
+15. **Três idiomas**: Português, English e Español. Troque no seletor 🌐 no topo da janela; na primeira vez o AutoDraw usa o idioma do Windows.
+16. **Tutorial rápido**: na primeira abertura, quatro passos mostram como usar. Reveja a qualquer momento pelo botão **?** no topo.
 
 ---
 
@@ -107,7 +109,7 @@ python main.py
 ```bash
 pip install -r requirements-dev.txt
 
-pytest tests        # 238 testes
+pytest tests        # 400 testes
 pyflakes main.py build_exe.py src tests
 ```
 
@@ -136,9 +138,10 @@ src/
   time_estimator.py         Estimativa, tempo restante e calibração
   mouse_controller.py       Win32 SendInput, DPI, ESC de emergência
   input_guard.py            Trava de segurança: detecta o mouse de verdade (Raw Input)
+  i18n.py                   Idiomas (pt/en/es): textos em português traduzidos por tr()
   drawing_engine.py         QThread que executa o desenho
   async_processor.py        QThread de processamento com cancelamento
-  ui/                       Janela principal, diálogos, overlay e widgets
+  ui/                       Janela principal, diálogos, tutorial, overlay e widgets
 tests/                      Suíte pytest
 ```
 
@@ -148,7 +151,7 @@ tests/                      Suíte pytest
 
 Ficam em `%USERPROFILE%\.autodraw\`:
 
-- `config.json` — preferências (qualidade, modo, velocidade, última área, calibração)
+- `config.json` — preferências (idioma, qualidade, modo, velocidade, última área, calibração)
 - `autodraw.log` — log rotativo da aplicação, útil para diagnosticar o `.exe` compilado
 
 Defina a variável de ambiente `AUTODRAW_HOME` para usar outro diretório.

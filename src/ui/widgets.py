@@ -7,6 +7,7 @@ from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
+from src.i18n import tr
 from src.image_loader import SUPPORTED_LABEL
 
 Stroke = List[Tuple[int, int]]
@@ -96,7 +97,7 @@ class ImagePreviewCanvas(QWidget):
 
         if self.is_drag_hover:
             self._paint_centered_message(
-                painter, rect, "📥 SOLTE A IMAGEM AQUI", f"({SUPPORTED_LABEL})",
+                painter, rect, tr("📥 SOLTE A IMAGEM AQUI"), f"({SUPPORTED_LABEL})",
                 QColor("#A5B4FC"), backdrop=QColor(99, 102, 241, 60),
             )
             return
@@ -105,8 +106,8 @@ class ImagePreviewCanvas(QWidget):
             painter.setPen(QPen(QColor("#64748B"), 1, Qt.PenStyle.DashLine))
             painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), 8, 8)
             self._paint_centered_message(
-                painter, rect, "🖼️ ARRASTE SUA IMAGEM AQUI",
-                "ou clique em 'Escolher imagem'", QColor("#94A3B8"),
+                painter, rect, tr("🖼️ ARRASTE SUA IMAGEM AQUI"),
+                tr("ou clique em 'Escolher imagem'"), QColor("#94A3B8"),
             )
             return
 
@@ -131,7 +132,7 @@ class ImagePreviewCanvas(QWidget):
             painter.drawText(
                 img_rect,
                 Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
-                f" Simulação no Paint: {self._target_w}×{self._target_h} px ",
+                tr(" Simulação no Paint: {w}×{h} px ", w=self._target_w, h=self._target_h),
             )
 
         else:  # 'processed'
@@ -205,7 +206,7 @@ class RecentImagesBar(QWidget):
         if not existing:
             return
 
-        label = QLabel("Recentes:", self)
+        label = QLabel(tr("Recentes:"), self)
         label.setStyleSheet("color: #64748B; font-size: 11px;")
         self._layout.addWidget(label)
 
