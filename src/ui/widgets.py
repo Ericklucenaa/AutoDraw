@@ -107,7 +107,7 @@ class ImagePreviewCanvas(QWidget):
             painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), 8, 8)
             self._paint_centered_message(
                 painter, rect, tr("🖼️ ARRASTE SUA IMAGEM AQUI"),
-                tr("ou clique em 'Escolher imagem'"), QColor("#94A3B8"),
+                tr("ou cole com Ctrl+V, ou clique em 'Escolher imagem'"), QColor("#94A3B8"),
             )
             return
 

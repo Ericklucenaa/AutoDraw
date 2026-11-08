@@ -1,5 +1,7 @@
 """Behaviour of the main window: debouncing, staleness, persistence, teardown."""
 import pytest
+import os
+import cv2
 from PySide6.QtWidgets import QMessageBox
 
 from src.config import ConfigManager
@@ -384,3 +386,81 @@ def test_donate_buttons_open_the_ko_fi_page(window, monkeypatch):
     for b in buttons:
         b.click()
     assert opened == [DONATE_URL, DONATE_URL]
+
+
+# ---------------- paste (Ctrl+V) ----------------
+
+@pytest.fixture(autouse=True)
+def _clear_clipboard(qapp):
+    """Qt crashes at interpreter exit if the clipboard still owns test data."""
+    yield
+    from PySide6.QtWidgets import QApplication
+    QApplication.clipboard().clear()
+    qapp.processEvents()
+
+
+def _set_clipboard(mime):
+    from PySide6.QtWidgets import QApplication
+    QApplication.clipboard().setMimeData(mime)
+
+
+def test_paste_copied_pixels_loads_and_saves_png(qapp, window, sample_bgr, isolated_app_home):
+    from PySide6.QtCore import QMimeData
+    from PySide6.QtGui import QImage
+
+    rgb = cv2.cvtColor(sample_bgr, cv2.COLOR_BGR2RGB).copy()
+    h, w = rgb.shape[:2]
+    image = QImage(rgb.data, w, h, w * 3, QImage.Format.Format_RGB888).copy()
+    mime = QMimeData()
+    mime.setImageData(image)
+    _set_clipboard(mime)
+
+    window.paste_image_from_clipboard()
+
+    info = window.current_image_info
+    assert info is not None
+    assert (info.width, info.height) == (w, h)
+    assert info.filename.startswith("colada_") and info.filepath.endswith(".png")
+    assert (isolated_app_home / "coladas").is_dir()
+
+
+def test_paste_copied_file_loads_it(qapp, window, image_path):
+    from PySide6.QtCore import QMimeData, QUrl
+
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(image_path)])
+    _set_clipboard(mime)
+
+    window.paste_image_from_clipboard()
+    assert window.current_image_info is not None
+    assert os.path.normcase(os.path.normpath(window.current_image_info.filepath)) == os.path.normcase(image_path)
+
+
+def test_paste_quoted_path_text_loads_it(qapp, window, image_path):
+    from PySide6.QtCore import QMimeData
+
+    mime = QMimeData()
+    mime.setText(f'"{image_path}"')
+    _set_clipboard(mime)
+
+    window.paste_image_from_clipboard()
+    assert window.current_image_info is not None
+
+
+def test_paste_without_image_warns(qapp, window, monkeypatch):
+    from PySide6.QtCore import QMimeData
+
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: warned.append(a)))
+    mime = QMimeData()
+    mime.setText("apenas texto")
+    _set_clipboard(mime)
+
+    window.paste_image_from_clipboard()
+    assert window.current_image_info is None
+    assert warned
+
+
+def test_paste_shortcut_is_ctrl_v(window):
+    from PySide6.QtGui import QKeySequence
+    assert window.paste_shortcut.key() == QKeySequence("Ctrl+V")

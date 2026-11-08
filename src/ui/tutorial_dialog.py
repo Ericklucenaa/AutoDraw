@@ -9,7 +9,7 @@ STEPS = (
     (
         "🖼️",
         "Escolha uma imagem",
-        "Arraste uma imagem para a janela ou clique em ESCOLHER IMAGEM. "
+        "Arraste uma imagem para a janela, cole com Ctrl+V ou clique em ESCOLHER IMAGEM. "
         "Funciona com PNG, JPG, SVG, GIF e outros formatos.",
     ),
     (

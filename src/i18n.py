@@ -143,7 +143,20 @@ TRANSLATIONS: Dict[str, Tuple[str, str]] = {
     "Recentes:": ("Recent:", "Recientes:"),
     "📥 SOLTE A IMAGEM AQUI": ("📥 DROP THE IMAGE HERE", "📥 SUELTA LA IMAGEN AQUÍ"),
     "🖼️ ARRASTE SUA IMAGEM AQUI": ("🖼️ DRAG YOUR IMAGE HERE", "🖼️ ARRASTRA TU IMAGEN AQUÍ"),
-    "ou clique em 'Escolher imagem'": ("or click 'Choose image'", "o haz clic en 'Elegir imagen'"),
+    "ou cole com Ctrl+V, ou clique em 'Escolher imagem'": (
+        "or paste with Ctrl+V, or click 'Choose image'", "o pega con Ctrl+V, o haz clic en 'Elegir imagen'"),
+    "📋 COLAR (Ctrl+V)": ("📋 PASTE (Ctrl+V)", "📋 PEGAR (Ctrl+V)"),
+    "Cola uma imagem copiada (print, imagem do navegador) ou um arquivo copiado no Explorer.": (
+        "Pastes a copied image (screenshot, browser image) or a file copied in Explorer.",
+        "Pega una imagen copiada (captura, imagen del navegador) o un archivo copiado en el Explorador."),
+    "Nada para colar": ("Nothing to paste", "Nada para pegar"),
+    "A área de transferência não tem uma imagem.\n\n"
+    "Copie uma imagem (print, \"Copiar imagem\" no navegador) ou um arquivo de imagem "
+    "e aperte Ctrl+V de novo.\n\nAceitos: {formats}": (
+        "The clipboard has no image.\n\nCopy an image (screenshot, \"Copy image\" in the browser) "
+        "or an image file and press Ctrl+V again.\n\nAccepted: {formats}",
+        "El portapapeles no tiene una imagen.\n\nCopia una imagen (captura, \"Copiar imagen\" en el navegador) "
+        "o un archivo de imagen y pulsa Ctrl+V de nuevo.\n\nAceptados: {formats}"),
     " Simulação no Paint: {w}×{h} px ": (" Paint preview: {w}×{h} px ", " Simulación en Paint: {w}×{h} px "),
     # ---- area selection overlay
     " Área de desenho: {w} × {h} px ": (" Drawing area: {w} × {h} px ", " Área de dibujo: {w} × {h} px "),
@@ -248,9 +261,9 @@ TRANSLATIONS: Dict[str, Tuple[str, str]] = {
     "Próximo ▶": ("Next ▶", "Siguiente ▶"),
     "Começar a usar ✓": ("Start using it ✓", "Empezar a usar ✓"),
     "Escolha uma imagem": ("Choose an image", "Elige una imagen"),
-    "Arraste uma imagem para a janela ou clique em ESCOLHER IMAGEM. Funciona com PNG, JPG, SVG, GIF e outros formatos.": (
-        "Drag an image into the window or click CHOOSE IMAGE. Works with PNG, JPG, SVG, GIF and other formats.",
-        "Arrastra una imagen a la ventana o haz clic en ELEGIR IMAGEN. Funciona con PNG, JPG, SVG, GIF y otros formatos."),
+    "Arraste uma imagem para a janela, cole com Ctrl+V ou clique em ESCOLHER IMAGEM. Funciona com PNG, JPG, SVG, GIF e outros formatos.": (
+        "Drag an image into the window, paste it with Ctrl+V or click CHOOSE IMAGE. Works with PNG, JPG, SVG, GIF and other formats.",
+        "Arrastra una imagen a la ventana, pégala con Ctrl+V o haz clic en ELEGIR IMAGEN. Funciona con PNG, JPG, SVG, GIF y otros formatos."),
     "Escolha a qualidade e o modo. Contorno desenha só as bordas; Preto e Branco também preenche as áreas escuras. Use as abas para ver como vai ficar.": (
         "Pick the quality and the mode. Outline draws only the edges; Black & White also fills the dark areas. Use the tabs to preview the result.",
         "Elige la calidad y el modo. Contorno dibuja solo los bordes; Blanco y Negro también rellena las zonas oscuras. Usa las pestañas para ver cómo quedará."),

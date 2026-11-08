@@ -1,9 +1,13 @@
+import os
+import time
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt, QTimer, QUrl, Slot
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QPixmap
+from PySide6.QtCore import QMimeData, Qt, QTimer, QUrl, Slot
+from PySide6.QtGui import (
+    QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QImage, QKeySequence, QPixmap, QShortcut
+)
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
+    QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
     QLabel, QMainWindow, QMessageBox, QPushButton, QRadioButton, QScrollArea,
     QSlider, QVBoxLayout, QWidget
 )
@@ -15,7 +19,7 @@ from src.drawing_engine import DrawingEngineWorker
 from src.i18n import LANGUAGES, detect_language, get_language, set_language, tr
 from src.image_loader import SUPPORTED_LABEL, ImageInfo, ImageLoader
 from src.input_guard import RealMouseGuard
-from src.logger import get_logger
+from src.logger import app_dir, get_logger
 from src.time_estimator import TimeEstimator
 from src.ui.confirmation_dialog import ConfirmationDialog, CountdownOverlayDialog
 from src.ui.drawing_dialog import CompletionDialog, DrawingProgressDialog
@@ -54,6 +58,10 @@ COUNTDOWN_SECONDS = 3
 HEADER_ICON_STYLE = "QPushButton { padding: 0px; font-size: 17px; }"
 # Time for the main window's minimise animation before the mouse starts moving.
 MINIMIZE_SETTLE_MS = 400
+# Images pasted with Ctrl+V are saved here so they work like any opened file
+# (recent images, reprocessing). Only the newest ones are kept.
+PASTED_DIR_NAME = "coladas"
+PASTED_KEEP = 20
 
 
 class MainWindow(QMainWindow):
@@ -97,6 +105,11 @@ class MainWindow(QMainWindow):
 
         self._init_ui()
         self._load_saved_defaults()
+
+        # Owned by the window, not by a card, so it survives the UI rebuild
+        # done when the language changes.
+        self.paste_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Paste), self)
+        self.paste_shortcut.activated.connect(self.paste_image_from_clipboard)
 
     # ---------------- construction ----------------
 
@@ -222,6 +235,14 @@ class MainWindow(QMainWindow):
         self.btn_choose_image.setFixedHeight(38)
         self.btn_choose_image.clicked.connect(self._choose_image_dialog)
         top_row.addWidget(self.btn_choose_image)
+
+        self.btn_paste_image = QPushButton(tr("📋 COLAR (Ctrl+V)"), self)
+        self.btn_paste_image.setFixedHeight(38)
+        self.btn_paste_image.setToolTip(
+            tr("Cola uma imagem copiada (print, imagem do navegador) ou um arquivo copiado no Explorer.")
+        )
+        self.btn_paste_image.clicked.connect(self.paste_image_from_clipboard)
+        top_row.addWidget(self.btn_paste_image)
 
         self.lbl_image_info = QLabel(tr("Nenhuma imagem selecionada"), self)
         self.lbl_image_info.setObjectName("Badge")
@@ -507,6 +528,71 @@ class MainWindow(QMainWindow):
             if ImageLoader.is_supported(filepath):
                 return filepath
         return None
+
+    # ---------------- paste (Ctrl+V) ----------------
+
+    @Slot()
+    def paste_image_from_clipboard(self) -> None:
+        """Loads the image on the clipboard: copied pixels, a copied file or a pasted path."""
+        if self.drawing_worker is not None:
+            return  # never swap the image under a running drawing
+        filepath = self._image_path_from_mime(QApplication.clipboard().mimeData())
+        if filepath:
+            self._load_image_from_path(filepath)
+            return
+        QMessageBox.warning(
+            self,
+            tr("Nada para colar"),
+            tr("A área de transferência não tem uma imagem.\n\n"
+               "Copie uma imagem (print, \"Copiar imagem\" no navegador) ou um arquivo de imagem "
+               "e aperte Ctrl+V de novo.\n\nAceitos: {formats}", formats=SUPPORTED_LABEL),
+        )
+
+    def _image_path_from_mime(self, mime: Optional[QMimeData]) -> Optional[str]:
+        if mime is None:
+            return None
+
+        # 1. Files copied in the Explorer (Ctrl+C on a file).
+        if mime.hasUrls():
+            for url in mime.urls():
+                path = url.toLocalFile()
+                if ImageLoader.is_supported(path) and os.path.isfile(path):
+                    return path
+
+        # 2. Image pixels: Print Screen, Snipping Tool, "Copy image" in a browser.
+        if mime.hasImage():
+            image = QImage(mime.imageData())
+            if not image.isNull():
+                return self._save_pasted_image(image)
+
+        # 3. A path pasted as text, e.g. "Copy as path" in the Explorer.
+        if mime.hasText():
+            text = mime.text().strip().strip('"').strip()
+            if text and "\n" not in text and ImageLoader.is_supported(text) and os.path.isfile(text):
+                return text
+        return None
+
+    def _save_pasted_image(self, image: QImage) -> Optional[str]:
+        folder = app_dir() / PASTED_DIR_NAME
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+        path = folder / f"colada_{stamp}.png"
+        counter = 1
+        while path.exists():
+            counter += 1
+            path = folder / f"colada_{stamp}_{counter}.png"
+        if not image.save(str(path), "PNG"):
+            log.error("Could not save pasted image to %s", path)
+            return None
+        log.info("Pasted image saved to %s (%dx%d)", path, image.width(), image.height())
+
+        old = sorted(folder.glob("colada_*.png"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for stale in old[PASTED_KEEP:]:
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+        return str(path)
 
     # ---------------- state restore ----------------
 
